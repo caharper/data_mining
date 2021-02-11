@@ -149,6 +149,27 @@ When removing columns that either do not have data or a constant is repeated thr
 ```{r}
 head(tx_county_info)
 ```
+
+### Are there Duplicates?
+```{r}
+mobility_duplicates <- duplicated(global_mobility_report)
+census_duplicates <- duplicated(cases_plus_census)
+tx_county_duplicates <- duplicated(tx_county_info)
+tx_statewide_duplicates <- duplicated(tx_statewide_info)
+
+print(sum(mobility_duplicates, na.rm = TRUE))
+print(sum(census_duplicates, na.rm = TRUE))
+print(sum(tx_county_duplicates, na.rm = TRUE))
+print(sum(tx_statewide_duplicates, na.rm = TRUE))
+
+```
+
+We can see that there were no duplicate observations in the data.  At least none on the basis that the data was the exact same.
+
+```{r}
+unique(mobility_duplicates)
+```
+
   
 
 
