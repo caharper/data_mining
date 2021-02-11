@@ -239,9 +239,14 @@ summary {
 <!-- rnb-text-begin -->
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubGlicmFyeShiZWVzd2FybSlcbmxpYnJhcnkobmFuaWFyKVxuYGBgIn0= -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubGlicmFyeShiZWVzd2FybSlcbmxpYnJhcnkobmFuaWFyKVxuIyBpbnN0YWxsLnBhY2thZ2VzKFwiamFuaXRvclwiKVxubGlicmFyeShqYW5pdG9yKVxubGlicmFyeShkcGx5cilcbiMgaW5zdGFsbC5wYWNrYWdlcyhcInNldHNcIilcbmxpYnJhcnkoc2V0cylcbmBgYCJ9 -->
 <pre class="r"><code>library(beeswarm)
-library(naniar)</code></pre>
+library(naniar)
+# install.packages(&quot;janitor&quot;)
+library(janitor)
+library(dplyr)
+# install.packages(&quot;sets&quot;)
+library(sets)</code></pre>
 <!-- rnb-source-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
@@ -266,11 +271,11 @@ library(naniar)</code></pre>
 <h1>Data Understanding</h1>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuIyBMb2FkIHNvbWUgb2YgdGhlIGRhdGEgXG50eF9kYXRhIDwtIGxvYWRfZmlsZShcIi4vLi4vZGF0YS9DT1ZJRC0xOV9jYXNlc19UWC5jc3ZcIilcbmdsb2JhbF9tb2JpbGl0eV9yZXBvcnQgPC0gbG9hZF9maWxlKFwiLi8uLi9kYXRhL0dsb2JhbF9Nb2JpbGl0eV9SZXBvcnQuY3N2XCIpXG5jYXNlc19wbHVzX2NlbnN1cyA8LSBsb2FkX2ZpbGUoXCIuLy4uL2RhdGEvQ09WSUQtMTlfY2FzZXNfcGx1c19jZW5zdXMuY3N2XCIpXG5gYGAifQ== -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuIyBMb2FkIHNvbWUgb2YgdGhlIGRhdGEgXG50eF9kYXRhIDwtIGxvYWRfZmlsZShcIi4vLi4vZGF0YS9DT1ZJRC0xOV9jYXNlc19UWC5jc3ZcIilcbmdsb2JhbF9tb2JpbGl0eV9yZXBvcnQgPC0gbG9hZF9maWxlKFwiLi8uLi9kYXRhL0dsb2JhbF9Nb2JpbGl0eV9SZXBvcnQuY3N2XCIpXG4jIGNhc2VzX3BsdXNfY2Vuc3VzIDwtIGxvYWRfZmlsZShcIi4vLi4vZGF0YS9DT1ZJRC0xOV9jYXNlc19wbHVzX2NlbnN1cy5jc3ZcIilcbmBgYCJ9 -->
 <pre class="r"><code># Load some of the data 
 tx_data &lt;- load_file(&quot;./../data/COVID-19_cases_TX.csv&quot;)
 global_mobility_report &lt;- load_file(&quot;./../data/Global_Mobility_Report.csv&quot;)
-cases_plus_census &lt;- load_file(&quot;./../data/COVID-19_cases_plus_census.csv&quot;)</code></pre>
+# cases_plus_census &lt;- load_file(&quot;./../data/COVID-19_cases_plus_census.csv&quot;)</code></pre>
 <!-- rnb-source-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
@@ -338,15 +343,162 @@ vis_miss(cases_plus_census_missing, sort_miss = T)
 <!-- rnb-plot-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
-<p>Add a new chunk by clicking the <em>Insert Chunk</em> button on the toolbar or by pressing <em>Cmd+Option+I</em>.</p>
-<p>When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the <em>Preview</em> button or press <em>Cmd+Shift+K</em> to preview the HTML file).</p>
-<p>The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike <em>Knit</em>, <em>Preview</em> does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.</p>
+</div>
+</div>
+<div id="clean-up-dataframes" class="section level2">
+<h2>Clean up DataFrames</h2>
+<p>First, we noticed that much of our data within the COVID-19_cases_TX file had many rows of data that are statewide and not just for a specific county. Let’s modify the data frame to be texas_county_info and texas_statewide_info.</p>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxudHhfY291bnR5X2luZm8gPSBmaWx0ZXIodHhfZGF0YSwgY291bnR5X25hbWUgIT0gXCJTdGF0ZXdpZGUgVW5hbGxvY2F0ZWRcIilcbnR4X3N0YXRld2lkZV9pbmZvID0gZmlsdGVyKHR4X2RhdGEsIGNvdW50eV9uYW1lID09IFwiU3RhdGV3aWRlIFVuYWxsb2NhdGVkXCIpXG5gYGAifQ== -->
+<pre class="r"><code>tx_county_info = filter(tx_data, county_name != &quot;Statewide Unallocated&quot;)
+tx_statewide_info = filter(tx_data, county_name == &quot;Statewide Unallocated&quot;)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuaGVhZCh0eF9jb3VudHlfaW5mbylcbmBgYCJ9 -->
+<pre class="r"><code>head(tx_county_info)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-frame-begin eyJtZXRhZGF0YSI6eyJjbGFzc2VzIjpbImRhdGEuZnJhbWUiXSwibnJvdyI6NiwibmNvbCI6Nywic3VtbWFyeSI6eyJEZXNjcmlwdGlvbiI6WyJkZlssN10gWzYgw5cgN10iXX19LCJyZGYiOiJINHNJQUFBQUFBQUFBOFdTNFU2RE1CREhiMnhBaHBsYjRndjRBaEJrT3YxcU5ENkFtY20rTGJWMGpzamFoWFpSditseitXN1RLN1FMQXhjVHYwaHk2ZDN2N3JqN0YrNXZaK05nRmdCQUYzcG9YUmRkY0IrbWQrRVZRTS9Cb0lPSnZqNWZzZWdFSFI5dGdPWUJmSDc4YkRBcTgxWGo4SnFuckpDQ245NklEVmR2LzRIM04zS21zejk0TzlVUUg3RDZqQ0NKa3ppTXo4SWthWkZ4aTV5M3lFV0xURnJrc3JiVG9lZVgvTjRuZGpsWk1XbUUrQWFPYUhtRjgwVzJsbk1xVW1iNGtlRzZ4L1pMUlpRTmhtWFFhdXVsdFJJcStDSXJWaXlkVXlKeGNvVzlsQkcxbEkzbCtvVjRpZXlDV3BYelhrbndtaXBvVHFSVllXR0FZMG0wS1BTeUFOdEdpeS9XS2hNY214ejloN3VONWs3UkFNTU4xNXVrSVYxdStITTQwUVBLZEdVRGMzbzEzNjlHT2wvbVZhNFZ5L2hUeG5jM21KTkhscHZnR0JXWGdxTjFrWEZsbFNDVmtSS0syTHFBaXR5U1VodHN2d0cwQzVCYzJBTUFBQT09In0= -->
+<div data-pagedtable="false">
+<script data-pagedtable-source type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["county_fips_code"],"name":[1],"type":["int"],"align":["right"]},{"label":["county_name"],"name":[2],"type":["chr"],"align":["left"]},{"label":["state"],"name":[3],"type":["chr"],"align":["left"]},{"label":["state_fips_code"],"name":[4],"type":["int"],"align":["right"]},{"label":["date"],"name":[5],"type":["chr"],"align":["left"]},{"label":["confirmed_cases"],"name":[6],"type":["int"],"align":["right"]},{"label":["deaths"],"name":[7],"type":["int"],"align":["right"]}],"data":[{"1":"48001","2":"Anderson County","3":"TX","4":"48","5":"2020-01-22","6":"0","7":"0","_rn_":"1"},{"1":"48001","2":"Anderson County","3":"TX","4":"48","5":"2020-01-23","6":"0","7":"0","_rn_":"2"},{"1":"48001","2":"Anderson County","3":"TX","4":"48","5":"2020-01-24","6":"0","7":"0","_rn_":"3"},{"1":"48001","2":"Anderson County","3":"TX","4":"48","5":"2020-01-25","6":"0","7":"0","_rn_":"4"},{"1":"48001","2":"Anderson County","3":"TX","4":"48","5":"2020-01-26","6":"0","7":"0","_rn_":"5"},{"1":"48001","2":"Anderson County","3":"TX","4":"48","5":"2020-01-27","6":"0","7":"0","_rn_":"6"}],"options":{"columns":{"min":{},"max":[10],"total":[7]},"rows":{"min":[10],"max":[10],"total":[6]},"pages":{}}}
+  </script>
+</div>
+<!-- rnb-frame-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuaGVhZCh0eF9zdGF0ZXdpZGVfaW5mbylcbmBgYCJ9 -->
+<pre class="r"><code>head(tx_statewide_info)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-frame-begin eyJtZXRhZGF0YSI6eyJjbGFzc2VzIjpbImRhdGEuZnJhbWUiXSwibnJvdyI6NiwibmNvbCI6Nywic3VtbWFyeSI6eyJEZXNjcmlwdGlvbiI6WyJkZlssN10gWzYgw5cgN10iXX19LCJyZGYiOiJINHNJQUFBQUFBQUFBODFUMjA3RE1Bek51bDYwb3JGSmlIZCtvRlhwdUgwQTRnUEdKdld0Q2tuR0tycGthaklOM3ZqeWdkTW1zTFdhUUR4UnlZcDk3RlA3T08zMFBwdUVXWWdRNmlNWHJPK0JpN3o1N0NHNlE4aDFJT2hCWXFEUFZ5ZzZBeWNBRzRMNTZQZ3pydk1OOGZ4UlljVzJCV1VYYzQ3TFVoQUk2ZjlMSGs3dHpMSS9lTitiU1k3WWZvOHdUZElrU2k2ak5PMGdrdzV5MVVHdU84aE5CN245eFczOWtELzRERHlPVjB3YUlZRUJ4MFJzdUhyTEY4VmE1a1JRWnZBVGcydU81VXU5ZkJPTTZxQkRjK2xlQ1JGOFVWUXJSbk9DSlhSdVlKOHlySmF5TmR5Z0V0dllEcWhWT2UrTkJMK3RncFJZV2hVV0RLRXRqaGVWSGhhaFhZc1NpTFVxQkFlU28vOENyMFh1VlMxZ3RPRjZFaHFSNVlhL1JQb2V3anJkMk5DYy9wNGZOQzJkRC9NcXo0cGwvTG5nWHhzczhSTXJUWEFLaW12Qjhib3F1TEpLQUpXeEVncmJ1cENJMGlLMU5yVDdCSzF4U3o3OEF3QUEifQ== -->
+<div data-pagedtable="false">
+<script data-pagedtable-source type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["county_fips_code"],"name":[1],"type":["int"],"align":["right"]},{"label":["county_name"],"name":[2],"type":["chr"],"align":["left"]},{"label":["state"],"name":[3],"type":["chr"],"align":["left"]},{"label":["state_fips_code"],"name":[4],"type":["int"],"align":["right"]},{"label":["date"],"name":[5],"type":["chr"],"align":["left"]},{"label":["confirmed_cases"],"name":[6],"type":["int"],"align":["right"]},{"label":["deaths"],"name":[7],"type":["int"],"align":["right"]}],"data":[{"1":"0","2":"Statewide Unallocated","3":"TX","4":"48","5":"2020-01-22","6":"0","7":"0","_rn_":"1"},{"1":"0","2":"Statewide Unallocated","3":"TX","4":"48","5":"2020-01-23","6":"0","7":"0","_rn_":"2"},{"1":"0","2":"Statewide Unallocated","3":"TX","4":"48","5":"2020-01-24","6":"0","7":"0","_rn_":"3"},{"1":"0","2":"Statewide Unallocated","3":"TX","4":"48","5":"2020-01-25","6":"0","7":"0","_rn_":"4"},{"1":"0","2":"Statewide Unallocated","3":"TX","4":"48","5":"2020-01-26","6":"0","7":"0","_rn_":"5"},{"1":"0","2":"Statewide Unallocated","3":"TX","4":"48","5":"2020-01-27","6":"0","7":"0","_rn_":"6"}],"options":{"columns":{"min":{},"max":[10],"total":[7]},"rows":{"min":[10],"max":[10],"total":[6]},"pages":{}}}
+  </script>
+</div>
+<!-- rnb-frame-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<div id="remove-columns-from-data-frames" class="section level3">
+<h3>Remove Columns from Data Frames</h3>
+<p>Remove columns from the dataframes that do not have any data, have the same data repeated (not useful since implicit knowledge)</p>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuIyBUcmFjayB0aGUgY29sdW1ucyB0byBzZWUgaWYgd2UgYXJlIHJlbW92aW5nIGFueSBcbm1vYmlsaXR5X2NvbHNfb3JpZyA8LSBjb2xuYW1lcyhnbG9iYWxfbW9iaWxpdHlfcmVwb3J0KVxuY2Vuc3VzX2NvbHNfb3JpZyA8LSBjb2xuYW1lcyhjYXNlc19wbHVzX2NlbnN1cylcbnR4X2NvdW50eV9jb2xzX29yaWcgPC0gY29sbmFtZXModHhfY291bnR5X2luZm8pXG50eF9zdGF0ZXdpZGVfY29sc19vcmlnIDwtIGNvbG5hbWVzKHR4X3N0YXRld2lkZV9pbmZvKVxuXG4jIFJlbW92ZSBhbnkgY29sdW1ucyB0aGF0IGRvIG5vdCBjb250YWluIGFueSBkYXRhXG5nbG9iYWxfbW9iaWxpdHlfcmVwb3J0IDwtIHJlbW92ZV9lbXB0eShnbG9iYWxfbW9iaWxpdHlfcmVwb3J0KVxuYGBgIn0= -->
+<pre class="r"><code># Track the columns to see if we are removing any 
+mobility_cols_orig &lt;- colnames(global_mobility_report)
+census_cols_orig &lt;- colnames(cases_plus_census)
+tx_county_cols_orig &lt;- colnames(tx_county_info)
+tx_statewide_cols_orig &lt;- colnames(tx_statewide_info)
+
+# Remove any columns that do not contain any data
+global_mobility_report &lt;- remove_empty(global_mobility_report)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoidmFsdWUgZm9yIFwid2hpY2hcIiBub3Qgc3BlY2lmaWVkLCBkZWZhdWx0aW5nIHRvIGMoXCJyb3dzXCIsIFwiY29sc1wiKVxuIn0= -->
+<pre><code>value for &quot;which&quot; not specified, defaulting to c(&quot;rows&quot;, &quot;cols&quot;)</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuY2FzZXNfcGx1c19jZW5zdXMgPC0gcmVtb3ZlX2VtcHR5KGNhc2VzX3BsdXNfY2Vuc3VzKVxuYGBgIn0= -->
+<pre class="r"><code>cases_plus_census &lt;- remove_empty(cases_plus_census)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoidmFsdWUgZm9yIFwid2hpY2hcIiBub3Qgc3BlY2lmaWVkLCBkZWZhdWx0aW5nIHRvIGMoXCJyb3dzXCIsIFwiY29sc1wiKVxuIn0= -->
+<pre><code>value for &quot;which&quot; not specified, defaulting to c(&quot;rows&quot;, &quot;cols&quot;)</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxudHhfY291bnR5X2luZm8gPC0gcmVtb3ZlX2VtcHR5KHR4X2NvdW50eV9pbmZvKVxuYGBgIn0= -->
+<pre class="r"><code>tx_county_info &lt;- remove_empty(tx_county_info)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoidmFsdWUgZm9yIFwid2hpY2hcIiBub3Qgc3BlY2lmaWVkLCBkZWZhdWx0aW5nIHRvIGMoXCJyb3dzXCIsIFwiY29sc1wiKVxuIn0= -->
+<pre><code>value for &quot;which&quot; not specified, defaulting to c(&quot;rows&quot;, &quot;cols&quot;)</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxudHhfc3RhdGV3aWRlX2luZm8gPC0gcmVtb3ZlX2VtcHR5KHR4X3N0YXRld2lkZV9pbmZvKVxuYGBgIn0= -->
+<pre class="r"><code>tx_statewide_info &lt;- remove_empty(tx_statewide_info)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoidmFsdWUgZm9yIFwid2hpY2hcIiBub3Qgc3BlY2lmaWVkLCBkZWZhdWx0aW5nIHRvIGMoXCJyb3dzXCIsIFwiY29sc1wiKVxuIn0= -->
+<pre><code>value for &quot;which&quot; not specified, defaulting to c(&quot;rows&quot;, &quot;cols&quot;)</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuIyBSZW1vdmUgY29sdW1ucyB0aGF0IGp1c3QgaGF2ZSBhIGNvbnN0YW50IHZhbHVlIFxuZ2xvYmFsX21vYmlsaXR5X3JlcG9ydCA8LSByZW1vdmVfY29uc3RhbnQoZ2xvYmFsX21vYmlsaXR5X3JlcG9ydClcbmNhc2VzX3BsdXNfY2Vuc3VzIDwtIHJlbW92ZV9jb25zdGFudChjYXNlc19wbHVzX2NlbnN1cylcbnR4X2NvdW50eV9pbmZvIDwtIHJlbW92ZV9jb25zdGFudCh0eF9jb3VudHlfaW5mbylcbnR4X3N0YXRld2lkZV9pbmZvIDwtIHJlbW92ZV9jb25zdGFudCh0eF9zdGF0ZXdpZGVfaW5mbylcblxubW9iaWxpdHlfY29sc19uZXcgPC0gY29sbmFtZXMoZ2xvYmFsX21vYmlsaXR5X3JlcG9ydClcbmNlbnN1c19jb2xzX25ldyA8LSBjb2xuYW1lcyhjYXNlc19wbHVzX2NlbnN1cylcbnR4X2NvdW50eV9jb2xzX25ldyA8LSBjb2xuYW1lcyh0eF9jb3VudHlfaW5mbylcbnR4X3N0YXRld2lkZV9jb2xzX25ldyA8LSBjb2xuYW1lcyh0eF9zdGF0ZXdpZGVfaW5mbylcblxuYGBgIn0= -->
+<pre class="r"><code># Remove columns that just have a constant value 
+global_mobility_report &lt;- remove_constant(global_mobility_report)
+cases_plus_census &lt;- remove_constant(cases_plus_census)
+tx_county_info &lt;- remove_constant(tx_county_info)
+tx_statewide_info &lt;- remove_constant(tx_statewide_info)
+
+mobility_cols_new &lt;- colnames(global_mobility_report)
+census_cols_new &lt;- colnames(cases_plus_census)
+tx_county_cols_new &lt;- colnames(tx_county_info)
+tx_statewide_cols_new &lt;- colnames(tx_statewide_info)
+</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuIyBHZXQgc2V0cyBmb3IgY29sdW1ucyBcbnByaW50KGFzLnNldChtb2JpbGl0eV9jb2xzX29yaWcpIC0gYXMuc2V0KG1vYmlsaXR5X2NvbHNfbmV3KSlcbmBgYCJ9 -->
+<pre class="r"><code># Get sets for columns 
+print(as.set(mobility_cols_orig) - as.set(mobility_cols_new))</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoie31cbiJ9 -->
+<pre><code>{}</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucHJpbnQoYXMuc2V0KGNlbnN1c19jb2xzX29yaWcpIC0gYXMuc2V0KGNlbnN1c19jb2xzX25ldykpXG5gYGAifQ== -->
+<pre class="r"><code>print(as.set(census_cols_orig) - as.set(census_cols_new))</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoie31cbiJ9 -->
+<pre><code>{}</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucHJpbnQoYXMuc2V0KHR4X2NvdW50eV9jb2xzX29yaWcpIC0gYXMuc2V0KHR4X2NvdW50eV9jb2xzX25ldykpXG5gYGAifQ== -->
+<pre class="r"><code>print(as.set(tx_county_cols_orig) - as.set(tx_county_cols_new))</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoie1wic3RhdGVcIiwgXCJzdGF0ZV9maXBzX2NvZGVcIn1cbiJ9 -->
+<pre><code>{&quot;state&quot;, &quot;state_fips_code&quot;}</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucHJpbnQoYXMuc2V0KHR4X2NvdW50eV9jb2xzX29yaWcpIC0gYXMuc2V0KHR4X3N0YXRld2lkZV9jb2xzX25ldykpXG5gYGAifQ== -->
+<pre class="r"><code>print(as.set(tx_county_cols_orig) - as.set(tx_statewide_cols_new))</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoie1wiY291bnR5X2ZpcHNfY29kZVwiLCBcImNvdW50eV9uYW1lXCIsIFwic3RhdGVcIiwgXCJzdGF0ZV9maXBzX2NvZGVcIn1cbiJ9 -->
+<pre><code>{&quot;county_fips_code&quot;, &quot;county_name&quot;, &quot;state&quot;, &quot;state_fips_code&quot;}</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<p>When removing columns that either do not have data or a constant is repeated throughout the column, the global_mobility_report remains the same; however, the following columns are dropped for the respective dataframes:</p>
+<ul>
+<li>census
+<ul>
+<li>date, do_date, pop_15_and_over, pop_5_years_over, pop_divorced, pop_never_married, pop_now_married, pop_separated, pop_widowed, speak_only_english_at_home, speak_spanish_at_home,and speak_spanish_at_home_low_english</li>
+</ul></li>
+<li>tx_county_info
+<ul>
+<li>state, state_fips_code</li>
+</ul></li>
+<li>tx_statewide_info
+<ul>
+<li>county_fips_code, county_name, state, and state_fips_code</li>
+</ul></li>
+</ul>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuaGVhZCh0eF9jb3VudHlfaW5mbylcbmBgYCJ9 -->
+<pre class="r"><code>head(tx_county_info)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-frame-begin eyJtZXRhZGF0YSI6eyJjbGFzc2VzIjpbImRhdGEuZnJhbWUiXSwibnJvdyI6NiwibmNvbCI6NSwic3VtbWFyeSI6eyJEZXNjcmlwdGlvbiI6WyJkZlssNV0gWzYgw5cgNV0iXX19LCJyZGYiOiJINHNJQUFBQUFBQUFBOFdTMzA2RE1CVEd6eGhnaHBrajhRVjhBUWhqL3JzMUdoL0FhTEk3VWt0eFJOYVN0a1M5MCtmeTNUWmJhT01HR2k4bE9XbjdPejA5MzNmQzNjMXlFU3dEQUJpRHEyTHNxUzE0RC9lMzBTV0E2NmpEU0NVbWVuMVZsNDUxVnNWVWhRL3crZkZ6UU5qbXU4TFpGYzBKRjR5ZVhMT0d5cmYvd1B1S2dqUkpreWlaUjJrNklJc0JPUjJRc3dFNUg1Q0w3eW45K3YyUjN4dS9SOUdhQ0dQRU16REVyYjJzS0d1UllaWVR3dzhOMXpVR3VUbVNkai9EakJZbFg1TTh3MGlvVnp2czV3VEpsZWcxbm5EMkV0dm1Xckh6M3Nueit3cHhoWVJWYUdHZzJxSzQ0Rm9Jd0taWGNzQnFXVEtxaWh6N1orMFdqM2dQaEEzVlN2SUlyeHI2SE0wVDNhSE5kekUxcTcrejk3cWV6clkzTzUvUXA1TGFrWGdWZWlTVk9Sd3B5NjNqdU9ZbGxkYUtvaUtXVENKN0w4Q3NzcVExQjVzdno1Uy8vRkVEQUFBPSJ9 -->
+<div data-pagedtable="false">
+<script data-pagedtable-source type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["county_fips_code"],"name":[1],"type":["int"],"align":["right"]},{"label":["county_name"],"name":[2],"type":["chr"],"align":["left"]},{"label":["date"],"name":[3],"type":["chr"],"align":["left"]},{"label":["confirmed_cases"],"name":[4],"type":["int"],"align":["right"]},{"label":["deaths"],"name":[5],"type":["int"],"align":["right"]}],"data":[{"1":"48001","2":"Anderson County","3":"2020-01-22","4":"0","5":"0","_rn_":"1"},{"1":"48001","2":"Anderson County","3":"2020-01-23","4":"0","5":"0","_rn_":"2"},{"1":"48001","2":"Anderson County","3":"2020-01-24","4":"0","5":"0","_rn_":"3"},{"1":"48001","2":"Anderson County","3":"2020-01-25","4":"0","5":"0","_rn_":"4"},{"1":"48001","2":"Anderson County","3":"2020-01-26","4":"0","5":"0","_rn_":"5"},{"1":"48001","2":"Anderson County","3":"2020-01-27","4":"0","5":"0","_rn_":"6"}],"options":{"columns":{"min":{},"max":[10],"total":[5]},"rows":{"min":[10],"max":[10],"total":[6]},"pages":{}}}
+  </script>
+</div>
+<!-- rnb-frame-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
 <!-- rnb-text-end -->
 </div>
 </div>
 </div>
 
-<div id="rmd-source-code">LS0tCnRpdGxlOiAiUiBOb3RlYm9vayIKb3V0cHV0OiBodG1sX25vdGVib29rCi0tLQoKYGBge3J9CmxpYnJhcnkoYmVlc3dhcm0pCmxpYnJhcnkobmFuaWFyKQpgYGAKCgojIE1ha2Ugc29tZSB1dGlsaXR5IGZ1bmN0aW9ucwoKYGBge3J9CmxvYWRfZmlsZSA8LSBmdW5jdGlvbihmaWxlX3BhdGgpewogIHJlYWQuY3N2KGZpbGVfcGF0aCkKfQoKCgpgYGAKCgojIEJ1c2luZXNzIFVuZGVyc3RhbmRpbmcKCk5lZWQgdG8gYWRkIHNvbWUgdGhpbmdzIGhlcmUgYWJvdXQgY292aWQuCgojIERhdGEgVW5kZXJzdGFuZGluZwoKYGBge3J9CiMgTG9hZCBzb21lIG9mIHRoZSBkYXRhIAp0eF9kYXRhIDwtIGxvYWRfZmlsZSgiLi8uLi9kYXRhL0NPVklELTE5X2Nhc2VzX1RYLmNzdiIpCmdsb2JhbF9tb2JpbGl0eV9yZXBvcnQgPC0gbG9hZF9maWxlKCIuLy4uL2RhdGEvR2xvYmFsX01vYmlsaXR5X1JlcG9ydC5jc3YiKQpjYXNlc19wbHVzX2NlbnN1cyA8LSBsb2FkX2ZpbGUoIi4vLi4vZGF0YS9DT1ZJRC0xOV9jYXNlc19wbHVzX2NlbnN1cy5jc3YiKQpgYGAKCiMjIFdoYXQgZGF0YSBpcyBhdmFpbGlhYmxlPwpUaGVyZSBpcyBhIGxhcmdlIGFtb3VudCBvZiBkYXRhIHByb3ZpZGVkIHRvIHVzIGZvciB0aGlzIHByb2plY3QuICBXZSBhcmUgZ2l2ZW4gdGhyZWUgZGlmZmVyZW50IGNzdiBmaWxlczoKCiogQ09WSUQtMTlfY2FzZXNfcGx1c19jZW5zdXMKICAqIGJyaWVmIGRlc2MuCiogQ09WSUQtMTlfY2FzZXNfVFgKICAqIGJyaWVmIGRlc2MuCiogR2xvYmFsX01vYmlsaXR5X1JlcG9ydAogICogYnJpZWYgZGVzYy4KCkFsbCBvZiB0aGVzZSBmaWxlcyBjb250YWluIGltcG9ydGFudCBmZWF0dXJlczsgaG93ZXZlciwgZHVlIHRvIHRoZSBsYXJnZSBhbW91bnQgb2YgZGF0YSBnaXZlbiB3ZSB3aWxsIGZvY3VzIG9uIGEgZmV3IG9mIHRoZSB2YXJpYWJsZXMgKGZlYXR1cmVzKSB0aGF0IHdlIGJlbGlldmUgYXJlIGNyaXRpY2FsbHkgaW1wb3J0YW50LiAgRmlyc3QsIGxldHMgbmFycm93IG91ciBmb2N1cyBkb3duIHRvIHRoZSBmb2xsb3dpbmcgdmFyaWFibGVzOiBfX19fCgoKIyMgVmVyaWZ5IERhdGEgUXVhbGl0eQoKIyMjIElzIHRoZXJlIG1pc3NpbmcgZGF0YT8KYGBge3J9CmNvbHNfd2l0aF9taXNzaW5nIDwtIGZ1bmN0aW9uKGZyYW1lKXsKICBjb2xuYW1lcyhmcmFtZSlbIGFwcGx5KGZyYW1lLCAyLCBhbnlOQSkgXQp9CmBgYAoKCmBgYHtyfQp0eF9taXNzaW5nIDwtIHR4X2RhdGFbY29sc193aXRoX21pc3NpbmcodHhfZGF0YSldCmdsb2JhbF9tb2JpbGl0eV9yZXBvcnRfbWlzc2luZyA8LSBnbG9iYWxfbW9iaWxpdHlfcmVwb3J0W2NvbHNfd2l0aF9taXNzaW5nKGdsb2JhbF9tb2JpbGl0eV9yZXBvcnQpXQpjYXNlc19wbHVzX2NlbnN1c19taXNzaW5nIDwtIGNhc2VzX3BsdXNfY2Vuc3VzW2NvbHNfd2l0aF9taXNzaW5nKGNhc2VzX3BsdXNfY2Vuc3VzKV0KYGBgCgpgYGB7cn0KY2xhc3ModHhfZGF0YSkKYGBgCgoKCmBgYHtyfQojIHZpc19taXNzKHR4X21pc3NpbmcsIHNvcnRfbWlzcyA9IFQpCiMgdmlzX21pc3MoZ2xvYmFsX21vYmlsaXR5X3JlcG9ydCwgd2Fybl9sYXJnZV9kYXRhID0gRikKdmlzX21pc3MoY2FzZXNfcGx1c19jZW5zdXNfbWlzc2luZywgc29ydF9taXNzID0gVCkKCmBgYAoKCgoKQWRkIGEgbmV3IGNodW5rIGJ5IGNsaWNraW5nIHRoZSAqSW5zZXJ0IENodW5rKiBidXR0b24gb24gdGhlIHRvb2xiYXIgb3IgYnkgcHJlc3NpbmcgKkNtZCtPcHRpb24rSSouCgpXaGVuIHlvdSBzYXZlIHRoZSBub3RlYm9vaywgYW4gSFRNTCBmaWxlIGNvbnRhaW5pbmcgdGhlIGNvZGUgYW5kIG91dHB1dCB3aWxsIGJlIHNhdmVkIGFsb25nc2lkZSBpdCAoY2xpY2sgdGhlICpQcmV2aWV3KiBidXR0b24gb3IgcHJlc3MgKkNtZCtTaGlmdCtLKiB0byBwcmV2aWV3IHRoZSBIVE1MIGZpbGUpLiAKClRoZSBwcmV2aWV3IHNob3dzIHlvdSBhIHJlbmRlcmVkIEhUTUwgY29weSBvZiB0aGUgY29udGVudHMgb2YgdGhlIGVkaXRvci4gQ29uc2VxdWVudGx5LCB1bmxpa2UgKktuaXQqLCAqUHJldmlldyogZG9lcyBub3QgcnVuIGFueSBSIGNvZGUgY2h1bmtzLiBJbnN0ZWFkLCB0aGUgb3V0cHV0IG9mIHRoZSBjaHVuayB3aGVuIGl0IHdhcyBsYXN0IHJ1biBpbiB0aGUgZWRpdG9yIGlzIGRpc3BsYXllZC4KCgo=</div>
+<div id="rmd-source-code">LS0tCnRpdGxlOiAiUiBOb3RlYm9vayIKb3V0cHV0OiBodG1sX25vdGVib29rCi0tLQoKYGBge3J9CmxpYnJhcnkoYmVlc3dhcm0pCmxpYnJhcnkobmFuaWFyKQojIGluc3RhbGwucGFja2FnZXMoImphbml0b3IiKQpsaWJyYXJ5KGphbml0b3IpCmxpYnJhcnkoZHBseXIpCiMgaW5zdGFsbC5wYWNrYWdlcygic2V0cyIpCmxpYnJhcnkoc2V0cykKYGBgCgoKIyBNYWtlIHNvbWUgdXRpbGl0eSBmdW5jdGlvbnMKCmBgYHtyfQpsb2FkX2ZpbGUgPC0gZnVuY3Rpb24oZmlsZV9wYXRoKXsKICByZWFkLmNzdihmaWxlX3BhdGgpCn0KCgoKYGBgCgoKIyBCdXNpbmVzcyBVbmRlcnN0YW5kaW5nCgpOZWVkIHRvIGFkZCBzb21lIHRoaW5ncyBoZXJlIGFib3V0IGNvdmlkLgoKIyBEYXRhIFVuZGVyc3RhbmRpbmcKCmBgYHtyfQojIExvYWQgc29tZSBvZiB0aGUgZGF0YSAKdHhfZGF0YSA8LSBsb2FkX2ZpbGUoIi4vLi4vZGF0YS9DT1ZJRC0xOV9jYXNlc19UWC5jc3YiKQpnbG9iYWxfbW9iaWxpdHlfcmVwb3J0IDwtIGxvYWRfZmlsZSgiLi8uLi9kYXRhL0dsb2JhbF9Nb2JpbGl0eV9SZXBvcnQuY3N2IikKY2FzZXNfcGx1c19jZW5zdXMgPC0gbG9hZF9maWxlKCIuLy4uL2RhdGEvQ09WSUQtMTlfY2FzZXNfcGx1c19jZW5zdXMuY3N2IikKYGBgCgojIyBXaGF0IGRhdGEgaXMgYXZhaWxpYWJsZT8KVGhlcmUgaXMgYSBsYXJnZSBhbW91bnQgb2YgZGF0YSBwcm92aWRlZCB0byB1cyBmb3IgdGhpcyBwcm9qZWN0LiAgV2UgYXJlIGdpdmVuIHRocmVlIGRpZmZlcmVudCBjc3YgZmlsZXM6CgoqIENPVklELTE5X2Nhc2VzX3BsdXNfY2Vuc3VzCiAgKiBicmllZiBkZXNjLgoqIENPVklELTE5X2Nhc2VzX1RYCiAgKiBicmllZiBkZXNjLgoqIEdsb2JhbF9Nb2JpbGl0eV9SZXBvcnQKICAqIGJyaWVmIGRlc2MuCgpBbGwgb2YgdGhlc2UgZmlsZXMgY29udGFpbiBpbXBvcnRhbnQgZmVhdHVyZXM7IGhvd2V2ZXIsIGR1ZSB0byB0aGUgbGFyZ2UgYW1vdW50IG9mIGRhdGEgZ2l2ZW4gd2Ugd2lsbCBmb2N1cyBvbiBhIGZldyBvZiB0aGUgdmFyaWFibGVzIChmZWF0dXJlcykgdGhhdCB3ZSBiZWxpZXZlIGFyZSBjcml0aWNhbGx5IGltcG9ydGFudC4gIEZpcnN0LCBsZXRzIG5hcnJvdyBvdXIgZm9jdXMgZG93biB0byB0aGUgZm9sbG93aW5nIHZhcmlhYmxlczogX19fXwoKCiMjIFZlcmlmeSBEYXRhIFF1YWxpdHkKCiMjIyBJcyB0aGVyZSBtaXNzaW5nIGRhdGE/CmBgYHtyfQpjb2xzX3dpdGhfbWlzc2luZyA8LSBmdW5jdGlvbihmcmFtZSl7CiAgY29sbmFtZXMoZnJhbWUpWyBhcHBseShmcmFtZSwgMiwgYW55TkEpIF0KfQpgYGAKCgpgYGB7cn0KdHhfbWlzc2luZyA8LSB0eF9kYXRhW2NvbHNfd2l0aF9taXNzaW5nKHR4X2RhdGEpXQpnbG9iYWxfbW9iaWxpdHlfcmVwb3J0X21pc3NpbmcgPC0gZ2xvYmFsX21vYmlsaXR5X3JlcG9ydFtjb2xzX3dpdGhfbWlzc2luZyhnbG9iYWxfbW9iaWxpdHlfcmVwb3J0KV0KY2FzZXNfcGx1c19jZW5zdXNfbWlzc2luZyA8LSBjYXNlc19wbHVzX2NlbnN1c1tjb2xzX3dpdGhfbWlzc2luZyhjYXNlc19wbHVzX2NlbnN1cyldCmBgYAoKYGBge3J9CmNsYXNzKHR4X2RhdGEpCmBgYAoKCgpgYGB7cn0KIyB2aXNfbWlzcyh0eF9taXNzaW5nLCBzb3J0X21pc3MgPSBUKQojIHZpc19taXNzKGdsb2JhbF9tb2JpbGl0eV9yZXBvcnQsIHdhcm5fbGFyZ2VfZGF0YSA9IEYpCnZpc19taXNzKGNhc2VzX3BsdXNfY2Vuc3VzX21pc3NpbmcsIHNvcnRfbWlzcyA9IFQpCgpgYGAKCiMjIENsZWFuIHVwIERhdGFGcmFtZXMKRmlyc3QsIHdlIG5vdGljZWQgdGhhdCBtdWNoIG9mIG91ciBkYXRhIHdpdGhpbiB0aGUgQ09WSUQtMTlfY2FzZXNfVFggZmlsZSBoYWQgbWFueSByb3dzIG9mIGRhdGEgdGhhdCBhcmUgc3RhdGV3aWRlIGFuZCBub3QganVzdCBmb3IgYSBzcGVjaWZpYyBjb3VudHkuICBMZXQncyBtb2RpZnkgdGhlIGRhdGEgZnJhbWUgdG8gYmUgdGV4YXNfY291bnR5X2luZm8gYW5kIHRleGFzX3N0YXRld2lkZV9pbmZvLgoKYGBge3J9CnR4X2NvdW50eV9pbmZvID0gZmlsdGVyKHR4X2RhdGEsIGNvdW50eV9uYW1lICE9ICJTdGF0ZXdpZGUgVW5hbGxvY2F0ZWQiKQp0eF9zdGF0ZXdpZGVfaW5mbyA9IGZpbHRlcih0eF9kYXRhLCBjb3VudHlfbmFtZSA9PSAiU3RhdGV3aWRlIFVuYWxsb2NhdGVkIikKYGBgCgoKYGBge3J9CmhlYWQodHhfY291bnR5X2luZm8pCmBgYAoKCmBgYHtyfQpoZWFkKHR4X3N0YXRld2lkZV9pbmZvKQpgYGAKCiMjIyBSZW1vdmUgQ29sdW1ucyBmcm9tIERhdGEgRnJhbWVzCgpSZW1vdmUgY29sdW1ucyBmcm9tIHRoZSBkYXRhZnJhbWVzIHRoYXQgZG8gbm90IGhhdmUgYW55IGRhdGEsIGhhdmUgdGhlIHNhbWUgZGF0YSByZXBlYXRlZCAobm90IHVzZWZ1bCBzaW5jZSBpbXBsaWNpdCBrbm93bGVkZ2UpCgpgYGB7cn0KIyBUcmFjayB0aGUgY29sdW1ucyB0byBzZWUgaWYgd2UgYXJlIHJlbW92aW5nIGFueSAKbW9iaWxpdHlfY29sc19vcmlnIDwtIGNvbG5hbWVzKGdsb2JhbF9tb2JpbGl0eV9yZXBvcnQpCmNlbnN1c19jb2xzX29yaWcgPC0gY29sbmFtZXMoY2FzZXNfcGx1c19jZW5zdXMpCnR4X2NvdW50eV9jb2xzX29yaWcgPC0gY29sbmFtZXModHhfY291bnR5X2luZm8pCnR4X3N0YXRld2lkZV9jb2xzX29yaWcgPC0gY29sbmFtZXModHhfc3RhdGV3aWRlX2luZm8pCgojIFJlbW92ZSBhbnkgY29sdW1ucyB0aGF0IGRvIG5vdCBjb250YWluIGFueSBkYXRhCmdsb2JhbF9tb2JpbGl0eV9yZXBvcnQgPC0gcmVtb3ZlX2VtcHR5KGdsb2JhbF9tb2JpbGl0eV9yZXBvcnQpCmNhc2VzX3BsdXNfY2Vuc3VzIDwtIHJlbW92ZV9lbXB0eShjYXNlc19wbHVzX2NlbnN1cykKdHhfY291bnR5X2luZm8gPC0gcmVtb3ZlX2VtcHR5KHR4X2NvdW50eV9pbmZvKQp0eF9zdGF0ZXdpZGVfaW5mbyA8LSByZW1vdmVfZW1wdHkodHhfc3RhdGV3aWRlX2luZm8pCgojIFJlbW92ZSBjb2x1bW5zIHRoYXQganVzdCBoYXZlIGEgY29uc3RhbnQgdmFsdWUgCmdsb2JhbF9tb2JpbGl0eV9yZXBvcnQgPC0gcmVtb3ZlX2NvbnN0YW50KGdsb2JhbF9tb2JpbGl0eV9yZXBvcnQpCmNhc2VzX3BsdXNfY2Vuc3VzIDwtIHJlbW92ZV9jb25zdGFudChjYXNlc19wbHVzX2NlbnN1cykKdHhfY291bnR5X2luZm8gPC0gcmVtb3ZlX2NvbnN0YW50KHR4X2NvdW50eV9pbmZvKQp0eF9zdGF0ZXdpZGVfaW5mbyA8LSByZW1vdmVfY29uc3RhbnQodHhfc3RhdGV3aWRlX2luZm8pCgptb2JpbGl0eV9jb2xzX25ldyA8LSBjb2xuYW1lcyhnbG9iYWxfbW9iaWxpdHlfcmVwb3J0KQpjZW5zdXNfY29sc19uZXcgPC0gY29sbmFtZXMoY2FzZXNfcGx1c19jZW5zdXMpCnR4X2NvdW50eV9jb2xzX25ldyA8LSBjb2xuYW1lcyh0eF9jb3VudHlfaW5mbykKdHhfc3RhdGV3aWRlX2NvbHNfbmV3IDwtIGNvbG5hbWVzKHR4X3N0YXRld2lkZV9pbmZvKQoKYGBgCgpgYGB7cn0KIyBHZXQgc2V0cyBmb3IgY29sdW1ucyAKcHJpbnQoYXMuc2V0KG1vYmlsaXR5X2NvbHNfb3JpZykgLSBhcy5zZXQobW9iaWxpdHlfY29sc19uZXcpKQpwcmludChhcy5zZXQoY2Vuc3VzX2NvbHNfb3JpZykgLSBhcy5zZXQoY2Vuc3VzX2NvbHNfbmV3KSkKcHJpbnQoYXMuc2V0KHR4X2NvdW50eV9jb2xzX29yaWcpIC0gYXMuc2V0KHR4X2NvdW50eV9jb2xzX25ldykpCnByaW50KGFzLnNldCh0eF9jb3VudHlfY29sc19vcmlnKSAtIGFzLnNldCh0eF9zdGF0ZXdpZGVfY29sc19uZXcpKQpgYGAKCldoZW4gcmVtb3ZpbmcgY29sdW1ucyB0aGF0IGVpdGhlciBkbyBub3QgaGF2ZSBkYXRhIG9yIGEgY29uc3RhbnQgaXMgcmVwZWF0ZWQgdGhyb3VnaG91dCB0aGUgY29sdW1uLCB0aGUgZ2xvYmFsX21vYmlsaXR5X3JlcG9ydCByZW1haW5zIHRoZSBzYW1lOyBob3dldmVyLCB0aGUgZm9sbG93aW5nIGNvbHVtbnMgYXJlIGRyb3BwZWQgZm9yIHRoZSByZXNwZWN0aXZlIGRhdGFmcmFtZXM6CgoqIGNlbnN1cwogICogZGF0ZSwgZG9fZGF0ZSwgcG9wXzE1X2FuZF9vdmVyLCBwb3BfNV95ZWFyc19vdmVyLCBwb3BfZGl2b3JjZWQsIHBvcF9uZXZlcl9tYXJyaWVkLCBwb3Bfbm93X21hcnJpZWQsIHBvcF9zZXBhcmF0ZWQsIHBvcF93aWRvd2VkLCBzcGVha19vbmx5X2VuZ2xpc2hfYXRfaG9tZSwgc3BlYWtfc3BhbmlzaF9hdF9ob21lLGFuZCBzcGVha19zcGFuaXNoX2F0X2hvbWVfbG93X2VuZ2xpc2gKKiB0eF9jb3VudHlfaW5mbwogICogc3RhdGUsIHN0YXRlX2ZpcHNfY29kZQoqIHR4X3N0YXRld2lkZV9pbmZvCiAgKiBjb3VudHlfZmlwc19jb2RlLCBjb3VudHlfbmFtZSwgc3RhdGUsIGFuZCBzdGF0ZV9maXBzX2NvZGUKICAKYGBge3J9CmhlYWQodHhfY291bnR5X2luZm8pCmBgYAogIAoKCgoKCgo=</div>
 
 
 

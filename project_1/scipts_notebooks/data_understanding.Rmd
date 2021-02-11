@@ -6,6 +6,11 @@ output: html_notebook
 ```{r}
 library(beeswarm)
 library(naniar)
+# install.packages("janitor")
+library(janitor)
+library(dplyr)
+# install.packages("sets")
+library(sets)
 ```
 
 
@@ -76,13 +81,78 @@ vis_miss(cases_plus_census_missing, sort_miss = T)
 
 ```
 
+## Clean up DataFrames
+First, we noticed that much of our data within the COVID-19_cases_TX file had many rows of data that are statewide and not just for a specific county.  Let's modify the data frame to be texas_county_info and texas_statewide_info.
+
+```{r}
+tx_county_info = filter(tx_data, county_name != "Statewide Unallocated")
+tx_statewide_info = filter(tx_data, county_name == "Statewide Unallocated")
+```
+
+
+```{r}
+head(tx_county_info)
+```
+
+
+```{r}
+head(tx_statewide_info)
+```
+
+### Remove Columns from Data Frames
+
+Remove columns from the dataframes that do not have any data, have the same data repeated (not useful since implicit knowledge)
+
+```{r}
+# Track the columns to see if we are removing any 
+mobility_cols_orig <- colnames(global_mobility_report)
+census_cols_orig <- colnames(cases_plus_census)
+tx_county_cols_orig <- colnames(tx_county_info)
+tx_statewide_cols_orig <- colnames(tx_statewide_info)
+
+# Remove any columns that do not contain any data
+global_mobility_report <- remove_empty(global_mobility_report)
+cases_plus_census <- remove_empty(cases_plus_census)
+tx_county_info <- remove_empty(tx_county_info)
+tx_statewide_info <- remove_empty(tx_statewide_info)
+
+# Remove columns that just have a constant value 
+global_mobility_report <- remove_constant(global_mobility_report)
+cases_plus_census <- remove_constant(cases_plus_census)
+tx_county_info <- remove_constant(tx_county_info)
+tx_statewide_info <- remove_constant(tx_statewide_info)
+
+mobility_cols_new <- colnames(global_mobility_report)
+census_cols_new <- colnames(cases_plus_census)
+tx_county_cols_new <- colnames(tx_county_info)
+tx_statewide_cols_new <- colnames(tx_statewide_info)
+
+```
+
+```{r}
+# Get sets for columns 
+print(as.set(mobility_cols_orig) - as.set(mobility_cols_new))
+print(as.set(census_cols_orig) - as.set(census_cols_new))
+print(as.set(tx_county_cols_orig) - as.set(tx_county_cols_new))
+print(as.set(tx_county_cols_orig) - as.set(tx_statewide_cols_new))
+```
+
+When removing columns that either do not have data or a constant is repeated throughout the column, the global_mobility_report remains the same; however, the following columns are dropped for the respective dataframes:
+
+* census
+  * date, do_date, pop_15_and_over, pop_5_years_over, pop_divorced, pop_never_married, pop_now_married, pop_separated, pop_widowed, speak_only_english_at_home, speak_spanish_at_home,and speak_spanish_at_home_low_english
+* tx_county_info
+  * state, state_fips_code
+* tx_statewide_info
+  * county_fips_code, county_name, state, and state_fips_code
+  
+```{r}
+head(tx_county_info)
+```
+  
 
 
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
 
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
-
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
 
 
