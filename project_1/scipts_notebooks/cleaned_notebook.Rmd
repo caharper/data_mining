@@ -1,0 +1,225 @@
+---
+title: "Cleaned Notebook"
+output: html_notebook
+---
+
+```{r}
+library(beeswarm)
+library(naniar)
+library(zoo)
+# install.packages("zoo")
+library(janitor)
+library(dplyr)
+# install.packages("GGally")
+# library(sets)
+library(tidyverse)
+library(ggplot2)
+library(GGally) # for ggpairs
+library(lubridate)
+# install.packages("maps")
+# library(maps)
+```
+
+```{r}
+load_file <- function(file_path){
+  read_csv(file_path)
+}
+
+tx_data <- load_file("./../data/COVID-19_cases_TX.csv")
+global_mobility_report <- load_file("./../data/Global_Mobility_Report.csv")
+cases_plus_census <- load_file("./../data/COVID-19_cases_plus_census.csv")
+```
+```{r}
+cols_keep <- c("county_fips_code", "confirmed_cases", "deaths", "median_income", "male_pop", "female_pop", "total_pop", "median_age", "worked_at_home")
+subset_census <- cases_plus_census[cols_keep]
+
+# cols_keep <- c("date", "retail_and_recreation_percent_change_from_baseline", "grocery_and_pharmacy_percent_change_from_baseline", "parks_percent_change_from_baseline", "transit_stations_percent_change_from_baseline", "workplaces_percent_change_from_baseline", "residential_percent_change_from_baseline")
+# subset_mobility <- global_mobility_report[cols_keep]
+# glo
+# subset_mobility$date <- as.Date(subset_mobility$date, format="%Y-%m-%d")
+```
+
+```{r}
+# global_mobility_report
+vis_miss(global_mobility_report, sort_miss = T, warn_large_data= F)
+```
+
+
+```{r}
+vis_miss(tx_data, sort_miss = T, warn_large_data= F)
+vis_miss(subset_census, sort_miss = T, warn_large_data = F)
+```
+
+```{r}
+library(RColorBrewer)
+plot_vs_county <- function(df, col_val, percentile=FALSE,
+                           fips_title="county_fips_code", banks=6, 
+                           legend_title="", graphic_title=""){
+  # Subset for speed 
+  df <- df[c(fips_title, col_val)]
+  
+  # Get county data
+  gcounty <- ggplot2::map_data("county")
+  # USA map data
+  gusa <- map_data("state")
+  
+  if (banks > 9){
+    mycolors <- colorRampPalette(brewer.pal(9, "Reds"))(banks)
+  }
+  
+  # Format with subregions
+  fipstab <-
+      transmute(maps::county.fips, fips, county = sub(":.*", "", polyname)) %>%
+      unique() %>%
+      separate(county, c("region", "subregion"), sep = ",")
+  
+  # Combine in desired order (NA for missing)
+  gcounty <- left_join(gcounty, fipstab, c("region", "subregion"))
+
+
+  dis <- df
+  dis$rprop <- rank(df[col_val])
+  dis$pcls <- cut(100 * percent_rank(df[col_val]), seq(0, 100, len = banks),
+                        include.lowest = TRUE)
+
+  # Missing data
+  anti_join(gcounty, dis, by = c("fips" = fips_title)) %>%
+    select(region, subregion) %>%
+    unique()
+  gcounty_pop <- left_join(gcounty, dis, by = c("fips" = fips_title))
+  fill_vals <- gcounty_pop[col_val]
+
+  # Plot
+  if (legend_title == ""){
+    legend_title <- col_val
+  }
+
+  if (percentile == FALSE){
+    # names(gcounty_pop)[names(gcounty_pop) == col_val] <- "col_of_interest"
+    plt <- ggplot(gcounty_pop) +
+      geom_polygon(aes(long, lat, group = group, fill = get(col_val)),
+                   color = "grey", size = 0.1, name="Percent Infected") +
+      geom_polygon(aes(long, lat, group = group),
+                   fill = NA, data = gusa, color = "lightgrey") +
+      coord_map("bonne", parameters = 41.6) + ggthemes::theme_map()+
+      scale_fill_gradient2()
+       # scale_fill_gradient(low = "white", high = "red", na.value = "grey")
+      # scale_fill_gradientn(colours = terrain.colors(10))
+  }
+
+  if (percentile == TRUE){
+    plt <- ggplot(gcounty_pop) +
+      geom_polygon(aes(long, lat, group = group, fill = pcls),
+                   color = "grey", size = 0.1) +
+      geom_polygon(aes(long, lat, group = group),
+                   fill = NA, data = gusa, color = "lightgrey") +
+      coord_map("bonne", parameters = 41.6) + ggthemes::theme_map() +
+      scale_fill_manual(values = mycolors, na.value = "grey") +
+      # scale_fill_brewer(palette = "viridis", na.value = "grey") +
+      theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)),
+            legend.background = element_rect(fill = NA), 
+            legend.position = "left")
+  }
+  plt <- plt + labs(fill=legend_title) + ggtitle(graphic_title)
+  plt
+}
+```
+
+```{r}
+subset_census
+```
+
+```{r}
+subset_census['pct_infected'] <- subset_census['confirmed_cases']/subset_census['total_pop']
+subset_census['pct_deaths'] <- subset_census['deaths']/subset_census['total_pop']
+subset_census$county_fips_code <-as.integer(subset_census$county_fips_code)
+subset_census
+```
+```{r}
+plot_vs_county(subset_census, "pct_infected", legend_title = "Percent Infected")
+plot_vs_county(subset_census, "pct_infected", percentile = TRUE, banks=11, 
+               legend_title = "Percentile Infected",
+               graphic_title = "Percentile of Percentage of People Infected by County")
+plot_vs_county(subset_census, "pct_deaths", percentile = TRUE, banks=11, 
+               legend_title = "Percentile Deaths",
+               graphic_title = "Percentile of Percentage of Deaths by County")
+```
+
+```{r}
+census_corr_cols <- c("deaths", "confirmed_cases", "median_income", "male_pop",
+                      "female_pop", "total_pop", "median_age", "worked_at_home")
+ggcorr(subset_census[census_corr_cols], low="red", mid="grey", high="blue", hjust= .75, size=3, 
+       label = TRUE, label_size = 3, label_color = "white") + ggplot2::labs(title = "Pearson Correlation of Important Variables")
+```
+
+
+```{r}
+country_date_pct_change <- global_mobility_report %>% select(country_region_code
+                                                             | contains("date") 
+                                                             | contains("percent"))
+country_date_pct_change
+```
+```{r}
+coi_downsampled <- country_date_pct_change %>% filter(country_region_code %in% 
+                                                        c("US", "CA", "NZ")) %>% 
+  filter(weekdays(date) == "Monday")
+coi_downsampled
+```
+
+
+
+```{r}
+ggplot(coi_downsampled %>% filter(country_region_code %in% c("CA", "NZ")),
+       aes(x=date, y=grocery_and_pharmacy_percent_change_from_baseline, group=country_region_code,
+                            color=country_region_code))+
+  # geom_line(aes(y=rollmean(retail_and_recreation_percent_change_from_baseline, k=20, na.pad=TRUE)))
+  geom_line()
+```
+
+
+```{r}
+# country_date_pct_change$retail_and_recreation_percent_change_from_baseline
+test <- country_date_pct_change %>% select(date | retail_and_recreation_percent_change_from_baseline) %>% filter(country_region_code %in% c("AE", "USA")) %>% filter(weekdays(date) == "Monday")
+
+ggplot( data = test, aes(x=date, y=n, group=country_region_code, color= country_region_code)) +
+  geom_line(aes(y=rollmean(retail_and_recreation_percent_change_from_baseline, k=1, na.pad=TRUE)))
+  # geom_line()
+```
+
+```{r}
+
+foo <- tibble(Date = seq(ymd("2018-01-01"), ymd("2018-01-31"), length.out = 31),
+                  Bar = runif(31))
+
+foo %>% 
+  filter(weekdays(Date) == "Monday")
+```
+
+```{r}
+x_axis <- seq(1:25)
+x <- runif(25)
+y <- rollmean(x, 10)
+y
+# plot(x_axis, y)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

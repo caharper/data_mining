@@ -9,8 +9,14 @@ library(naniar)
 # install.packages("janitor")
 library(janitor)
 library(dplyr)
-# install.packages("sets")
+# install.packages("GGally")
 library(sets)
+library(tidyverse)
+library(ggplot2)
+library(GGally) # for ggpairs
+# install.packages("maps")
+library(maps)
+# devtools::install_github(“UrbanInstitute/urbnmapr”)
 ```
 
 
@@ -50,9 +56,54 @@ There is a large amount of data provided to us for this project.  We are given t
   * brief desc.
 
 All of these files contain important features; however, due to the large amount of data given we will focus on a few of the variables (features) that we believe are critically important.  First, lets narrow our focus down to the following variables: ____
+```{r}
+head(global_mobility_report)
+```
 
 
 ## Verify Data Quality
+```{r}
+cols_keep <- c("county_fips_code", "confirmed_cases", "deaths", "median_income", "male_pop", "female_pop", "total_pop", "median_age", "worked_at_home")
+# print(cols_keep)
+subset_census <- cases_plus_census[cols_keep]
+head(subset_census)
+```
+```{r}
+sapply(subset_census, min, na.rm = TRUE)
+```
+```{r}
+cols_keep <- c("date", "retail_and_recreation_percent_change_from_baseline", "grocery_and_pharmacy_percent_change_from_baseline", "parks_percent_change_from_baseline", "transit_stations_percent_change_from_baseline", "workplaces_percent_change_from_baseline", "residential_percent_change_from_baseline")
+# print(cols_keep)
+subset_mobility <- global_mobility_report[cols_keep]
+```
+
+
+```{r}
+head(subset_mobility)
+```
+```{r}
+# subset_mobility[['date'] <- as.Date(subset_mobility['date']], format='%m/%d/%y')
+# head(subset_mobility)
+subset_mobility$date <- as.Date(subset_mobility$date, format="%Y-%m-%d")
+```
+
+
+
+```{r}
+# subset_mobility["date"] <- apply(subset_mobility["date"], 2, as.Date, format = '%m/%d/%y')
+head(subset_mobility)
+
+sapply(subset_mobility, min, na.rm = TRUE)
+```
+```{r}
+summarise(min = min(subset_mobility, na.rm = TRUE),
+            max = max(subset_mobility, na.rm = TRUE))
+```
+```{r}
+print(min(subset_mobility$date, na.rm=TRUE))
+print(max(subset_mobility$date, na.rm=TRUE))
+```
+
 
 ### Is there missing data?
 ```{r}
@@ -170,10 +221,323 @@ We can see that there were no duplicate observations in the data.  At least none
 unique(mobility_duplicates)
 ```
 
+### Create columns based on population
+
+```{r}
+# make a pct infected column (virus so should get 1 time, but this is disputed for covid)
+subset_census['pct_infected'] <- subset_census['confirmed_cases']/subset_census['total_pop']
+subset_census['pct_deaths'] <- subset_census['deaths']/subset_census['total_pop']
+head(subset_census)
+```
+
+```{r}
+library(RColorBrewer)
+plot_vs_county <- function(df, col_val, percentile=FALSE,
+                           fips_title="county_fips_code", banks=6, 
+                           legend_title="", graphic_title=""){
+  # Subset for speed 
+  df <- df[c(fips_title, col_val)]
   
+  # Get county data
+  gcounty <- ggplot2::map_data("county")
+  # USA map data
+  gusa <- map_data("state")
+  
+  if (banks > 9){
+    mycolors <- colorRampPalette(brewer.pal(9, "Reds"))(banks)
+  }
+  
+  # Format with subregions
+  fipstab <-
+      transmute(maps::county.fips, fips, county = sub(":.*", "", polyname)) %>%
+      unique() %>%
+      separate(county, c("region", "subregion"), sep = ",")
+  
+  # Combine in desired order (NA for missing)
+  gcounty <- left_join(gcounty, fipstab, c("region", "subregion"))
+
+
+  dis <- df
+  dis$rprop <- rank(df[col_val])
+  dis$pcls <- cut(100 * percent_rank(df[col_val]), seq(0, 100, len = banks),
+                        include.lowest = TRUE)
+
+  # Missing data
+  anti_join(gcounty, dis, by = c("fips" = fips_title)) %>%
+    select(region, subregion) %>%
+    unique()
+  gcounty_pop <- left_join(gcounty, dis, by = c("fips" = fips_title))
+  fill_vals <- gcounty_pop[col_val]
+
+  # Plot
+  if (legend_title == ""){
+    legend_title <- col_val
+  }
+
+  if (percentile == FALSE){
+    # names(gcounty_pop)[names(gcounty_pop) == col_val] <- "col_of_interest"
+    plt <- ggplot(gcounty_pop) +
+      geom_polygon(aes(long, lat, group = group, fill = get(col_val)),
+                   color = "grey", size = 0.1, name="Percent Infected") +
+      geom_polygon(aes(long, lat, group = group),
+                   fill = NA, data = gusa, color = "lightgrey") +
+      coord_map("bonne", parameters = 41.6) + ggthemes::theme_map()+
+      scale_fill_gradient2()
+       # scale_fill_gradient(low = "white", high = "red", na.value = "grey")
+      # scale_fill_gradientn(colours = terrain.colors(10))
+  }
+
+  if (percentile == TRUE){
+    plt <- ggplot(gcounty_pop) +
+      geom_polygon(aes(long, lat, group = group, fill = pcls),
+                   color = "grey", size = 0.1) +
+      geom_polygon(aes(long, lat, group = group),
+                   fill = NA, data = gusa, color = "lightgrey") +
+      coord_map("bonne", parameters = 41.6) + ggthemes::theme_map() +
+      scale_fill_manual(values = mycolors, na.value = "grey") +
+      # scale_fill_brewer(palette = "viridis", na.value = "grey") +
+      theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)),
+            legend.background = element_rect(fill = NA), 
+            legend.position = "left")
+  }
+  plt <- plt + labs(fill=legend_title) + ggtitle(graphic_title)
+  plt
+}
+```
+
+
+```{r}
+plot_vs_county(subset_census, "pct_infected", legend_title = "Percent Infected")
+plot_vs_county(subset_census, "pct_infected", percentile = TRUE, banks=11, 
+               legend_title = "Percentile Infected",
+               graphic_title = "Percentile of Percentage of People Infected by County")
+```
+
+```{r}
+library(maps)
+
+census_infected <- subset_census[c("county_fips_code", "pct_infected")]
+# census_infected$color_density <- rainbow(n = 50, census_infected$pct_infected / max(census_infected$pct_infected))
+census_infected$color_density <- heat.colors(50, census_infected$pct_infected/max(census_infected$pct_infected))
+head(census_infected)
+# county_infected_data <- 
+# map("county", fill=TRUE, col=counties$color)
+```
+
+```{r}
+data(county.fips)
+## Set up fake df_pop_county data frame
+df_pop_county <- data.frame(region=county.fips$fips)
+df_pop_county$value <- county.fips$fips
+y <- df_pop_county$value
+df_pop_county$color <- gray(y / max(y))
+
+## merge population data with county.fips to make sure color column is
+## ordered correctly.
+counties <- county.fips %>% left_join(df_pop_county, by=c('fips'='region'))
+# print(head(counties))
+
+newdata <- census_infected[order(census_infected$county_fips_code),]
+newdata
+
+# Through away counties that are not in default
+new_data <- newdata[(newdata$county_fips_code %in% counties$fips),]
+new_data
+```
+
+
+```{r}
+data(county.fips)
+## Set up fake df_pop_county data frame
+df_pop_county <- data.frame(region=county.fips$fips)
+df_pop_county$value <- county.fips$fips
+y <- df_pop_county$value
+df_pop_county$color <- gray(y / max(y))
+
+## merge population data with county.fips to make sure color column is
+## ordered correctly.
+counties <- county.fips %>% left_join(df_pop_county, by=c('fips'='region'))
+map("county", fill=TRUE, col=counties$color)
+```
+```{r}
+census_infected
+```
+
+```{r}
+data(county.fips)
+df_pop_county <- data.frame(region=county.fips$fips)
+df_pop_county
+```
+
+```{r}
+counties <- county.fips %>% left_join(census_infected, by=c('fips'='county_fips_code'))
+counties
+```
 
 
 
+
+```{r}
+ggplot2::map_data("county")
+as_tibble(maps::county.fips)
+# dall <- ggplot2::map_data("county") %>% left_join(as_tibble(maps::county.fips))
+```
+```{r}
+install.packages("mapproj")
+```
+
+```{r}
+# http://homepage.stat.uiowa.edu/~luke/classes/STAT4580-2020/maps.html
+# Choropleth Maps of County Population
+library(ggplot2)
+# install.packages(mapproj)
+library(mapproj)
+
+gcounty <- ggplot2::map_data("county")
+ggplot(gcounty) +
+    geom_polygon(aes(long, lat, group = group),
+                 fill = NA, color = "black", size = 0.05) +
+    coord_map("bonne", parameters = 41.6)
+```
+
+
+```{r}
+head(filter(maps::county.fips, grepl(":", polyname)))
+fipstab <-
+    transmute(maps::county.fips, fips, county = sub(":.*", "", polyname)) %>%
+    unique() %>%
+    separate(county, c("region", "subregion"), sep = ",")
+head(fipstab)
+gcounty <- left_join(gcounty, fipstab, c("region", "subregion"))
+head(gcounty)
+```
+```{r}
+test <- gcounty %>% left_join(census_infected, by=c('fips'='county_fips_code'))
+test
+```
+```{r}
+install.packages("ggthemes")
+library(ggthemes)
+```
+```{r}
+census_infected
+```
+```{r}
+census_infected %>% rank(pct_infected)
+```
+
+
+```{r}
+ncls <- 6
+w <- census_infected %>% select(fips = county_fips_code, pct_infected) %>% mutate(rpop = rank(pct_infected),
+           pcls = cut(100 * percent_rank(pct_infected), seq(0, 100, len = ncls),
+                      include.lowest = TRUE))
+w
+```
+```{r}
+anti_join(gcounty, w, "fips") %>%
+    select(region, subregion) %>%
+    unique()
+
+gcounty_pop <- left_join(gcounty, w, "fips")
+# filter(gcounty_pop, is.na(rpop)) %>%
+#     select(region, subregion, pop, rpop, pcls) %>%
+#     unique()
+```
+```{r}
+gcounty_pop
+```
+
+```{r}
+gusa <- map_data("state")
+ggplot(gcounty_pop) +
+    geom_polygon(aes(long, lat, group = group, fill = pct_infected),
+                 color = "grey", size = 0.1, name="Percent Infected") +
+    geom_polygon(aes(long, lat, group = group),
+                 fill = NA, data = gusa, color = "lightgrey") +
+    coord_map("bonne", parameters = 41.6) + ggthemes::theme_map()
+```
+
+```{r}
+ggplot(gcounty_pop) +
+    geom_polygon(aes(long, lat, group = group, fill = pcls),
+                 color = "grey", size = 0.1) +
+    geom_polygon(aes(long, lat, group = group),
+                 fill = NA, data = gusa, color = "lightgrey") +
+    coord_map("bonne", parameters = 41.6) + ggthemes::theme_map() +
+    scale_fill_brewer(palette = "Reds", na.value = "blue",
+                      name = "Percentile") +
+    theme(legend.background = element_rect(fill = NA))
+```
+```{r}
+plot_vs_county <- function(df, col_val, percentile=FALSE, fips_title="county_fips_code", banks=6, legend_title=""){
+  # Subset for speed 
+  df <- df[c(fips_title, col_val)]
+  
+  # Get county data
+  gcounty <- ggplot2::map_data("county")
+  # USA map data
+  gusa <- map_data("state")
+  
+  # Format with subregions
+  fipstab <-
+      transmute(maps::county.fips, fips, county = sub(":.*", "", polyname)) %>%
+      unique() %>%
+      separate(county, c("region", "subregion"), sep = ",")
+  
+  # Combine in desired order (NA for missing)
+  gcounty <- left_join(gcounty, fipstab, c("region", "subregion"))
+
+
+  dis <- df
+  dis$rprop <- rank(df[col_val])
+  dis$pcls <- cut(100 * percent_rank(df[col_val]), seq(0, 100, len = banks),
+                        include.lowest = TRUE)
+
+  # Missing data
+  anti_join(gcounty, dis, by = c("fips" = fips_title)) %>%
+    select(region, subregion) %>%
+    unique()
+  gcounty_pop <- left_join(gcounty, dis, by = c("fips" = fips_title))
+  fill_vals <- gcounty_pop[col_val]
+
+  # Plot
+  if (legend_title == ""){
+    legend_title <- col_val
+  }
+
+  if (percentile == FALSE){
+    # names(gcounty_pop)[names(gcounty_pop) == col_val] <- "col_of_interest"
+    plt <- ggplot(gcounty_pop) +
+      geom_polygon(aes(long, lat, group = group, fill = get(col_val)),
+                   color = "grey", size = 0.1, name="Percent Infected") +
+      geom_polygon(aes(long, lat, group = group),
+                   fill = NA, data = gusa, color = "lightgrey") +
+      coord_map("bonne", parameters = 41.6) + ggthemes::theme_map()
+  }
+
+  if (percentile == TRUE){
+    plt <- ggplot(gcounty_pop) +
+      geom_polygon(aes(long, lat, group = group, fill = pcls),
+                   color = "grey", size = 0.1) +
+      geom_polygon(aes(long, lat, group = group),
+                   fill = NA, data = gusa, color = "lightgrey") +
+      coord_map("bonne", parameters = 41.6) + ggthemes::theme_map() +
+      scale_fill_brewer(palette = "Reds", na.value = "blue") +
+      theme(legend.background = element_rect(fill = NA))
+  }
+  plt <- plt + labs(fill=legend_title)
+  plt
+}
+```
+
+```{r}
+subset_census
+# plot_vs_county(subset_census, "pct_infected", legend_title = "Pecent Infected")
+```
+```{r}
+plot_vs_county(subset_census, "pct_infected", percentile = TRUE, legend_title = "Percentile Infected", banks = 10)
+```
 
 
 
