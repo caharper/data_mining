@@ -1,0 +1,1027 @@
+---
+title: "Cleaned Notebook"
+output: html_notebook
+---
+
+```{r}
+library(beeswarm)
+library(naniar)
+library(zoo)
+# install.packages("zoo")
+library(janitor)
+library(dplyr)
+# install.packages("GGally")
+# library(sets)
+library(tidyverse)
+library(ggplot2)
+library(GGally) # for ggpairs
+library(lubridate)
+# install.packages("maps")
+# library(maps)
+```
+
+```{r}
+load_file <- function(file_path){
+  read_csv(file_path)
+}
+
+tx_data <- load_file("./../data/COVID-19_cases_TX.csv")
+global_mobility_report <- load_file("./../data/Global_Mobility_Report.csv")
+# cases_plus_census <- load_file("./../data/COVID-19_cases_plus_census.csv")
+```
+```{r}
+cols_keep <- c("county_fips_code", "confirmed_cases", "deaths", "median_income", "male_pop", "female_pop", "total_pop", "median_age", "worked_at_home", "male_65_to_66", "male_67_to_69", 
+               "male_70_to_74", "male_75_to_79", "male_80_to_84",
+               "male_85_and_over", "female_65_to_66", "female_67_to_69", 
+               "female_70_to_74", "female_75_to_79", "female_80_to_84",
+               "female_85_and_over")
+subset_census <- cases_plus_census[cols_keep]
+
+subset_census$male_elderly_pop <- subset_census %>% select(c("male_65_to_66",
+                                                             "male_67_to_69", 
+                                                             "male_70_to_74",
+                                                             "male_75_to_79",
+                                                             "male_80_to_84",
+                                                             "male_85_and_over")
+                                                           ) %>% rowSums()
+
+subset_census$female_elderly_pop <- subset_census %>% select(c("female_65_to_66",
+                                                             "female_67_to_69", 
+                                                             "female_70_to_74",
+                                                             "female_75_to_79",
+                                                             "female_80_to_84",
+                                                             "female_85_and_over")
+                                                           ) %>% rowSums()
+
+cols_keep <- c("county_fips_code", "confirmed_cases", "deaths", "median_income",
+               "male_pop", "female_pop", "total_pop", "median_age",
+               "worked_at_home", "male_elderly_pop", "female_elderly_pop")
+subset_census <- subset_census[cols_keep]
+subset_census
+
+# cols_keep <- c("date", "retail_and_recreation_percent_change_from_baseline", "grocery_and_pharmacy_percent_change_from_baseline", "parks_percent_change_from_baseline", "transit_stations_percent_change_from_baseline", "workplaces_percent_change_from_baseline", "residential_percent_change_from_baseline")
+# subset_mobility <- global_mobility_report[cols_keep]
+# glo
+# subset_mobility$date <- as.Date(subset_mobility$date, format="%Y-%m-%d")
+```
+## Data Understanding 
+
+### Missing values
+```{r}
+# global_mobility_report %>% filter(is.na(sub_region_1)) %>% select(country_region) %>%
+#   unique()
+
+# global_mobility_report %>% filter(is.na(sub_region_1)) %>% select(country_region) %>%
+#   unique()
+# global_mobility_report
+
+# global_mobility_report %>% filter(is.na(sub_region_1)) %>% filter(country_region == "Ghana") %>%
+#   select(country_region_code, date) %>% arrange(date)
+
+# global_mobility_report %>% filter(is.na(sub_region_1)) %>%
+#   # filter(country_region_code == "US") %>% select(date) %>%
+# group_by(country_region, date) %>% select(date, country_region) %>%
+# filter(n()>1) %>% summarize(n=n()) %>% filter(country_region == "Ghana")
+bad_cols <- c("sub_region_2", "metro_area", "iso_3166_2_code", "census_fips_code")
+global_mobility_report <- global_mobility_report %>% 
+  filter(!is.na(sub_region_1)) %>% 
+  group_by(country_region, date) %>%
+  arrange(country_region, sub_region_1, date) %>% 
+  select(-one_of(bad_cols))
+  # select(country_region_code, sub_region_1, date) %>%
+  # unique()
+```
+
+```{r}
+global_mobility_report
+```
+
+
+```{r}
+# global_mobility_report
+vis_miss(global_mobility_report, sort_miss = T, warn_large_data= F)
+```
+
+
+```{r}
+vis_miss(tx_data, sort_miss = T, warn_large_data= F)
+vis_miss(subset_census, sort_miss = T, warn_large_data = F)
+```
+### Duplicate Data
+
+```{r}
+get_dupes(load_file("./../data/Global_Mobility_Report.csv"))
+```
+
+```{r}
+# global_mobility_report[duplicated(global_mobility_report)]
+mobility_dupes <- get_dupes(global_mobility_report)
+census_dupes <- get_dupes(subset_census)
+tx_dupes <- get_dupes(tx_data)
+
+mobility_dupes
+census_dupes
+tx_dupes
+```
+```{r}
+mobility_dupes %>% ungroup()
+```
+```{r}
+mobility_dupes %>% ungroup() %>% filter(country_region == "United States")
+```
+
+
+# Graphs
+```{r}
+library(RColorBrewer)
+plot_vs_county <- function(df, col_val, percentile=FALSE,
+                           fips_title="county_fips_code", banks=6, 
+                           legend_title="", graphic_title=""){
+  # Subset for speed 
+  df <- df[c(fips_title, col_val)]
+  
+  # Get county data
+  gcounty <- ggplot2::map_data("county")
+  # USA map data
+  gusa <- map_data("state")
+  
+  if (banks > 9){
+    mycolors <- colorRampPalette(brewer.pal(9, "Reds"))(banks)
+  }
+  
+  # Format with subregions
+  fipstab <-
+      transmute(maps::county.fips, fips, county = sub(":.*", "", polyname)) %>%
+      unique() %>%
+      separate(county, c("region", "subregion"), sep = ",")
+  
+  # Combine in desired order (NA for missing)
+  gcounty <- left_join(gcounty, fipstab, c("region", "subregion"))
+
+
+  dis <- df
+  dis$rprop <- rank(df[col_val])
+  dis$pcls <- cut(100 * percent_rank(df[col_val]), seq(0, 100, len = banks),
+                        include.lowest = TRUE)
+
+  # Missing data
+  anti_join(gcounty, dis, by = c("fips" = fips_title)) %>%
+    select(region, subregion) %>%
+    unique()
+  gcounty_pop <- left_join(gcounty, dis, by = c("fips" = fips_title))
+  fill_vals <- gcounty_pop[col_val]
+
+  # Plot
+  if (legend_title == ""){
+    legend_title <- col_val
+  }
+
+  if (percentile == FALSE){
+    # names(gcounty_pop)[names(gcounty_pop) == col_val] <- "col_of_interest"
+    plt <- ggplot(gcounty_pop) +
+      geom_polygon(aes(long, lat, group = group, fill = get(col_val)),
+                   color = "grey", size = 0.1, name="Percent Infected") +
+      geom_polygon(aes(long, lat, group = group),
+                   fill = NA, data = gusa, color = "lightgrey") +
+      coord_map("bonne", parameters = 41.6) + ggthemes::theme_map()+
+      scale_fill_gradient2()
+       # scale_fill_gradient(low = "white", high = "red", na.value = "grey")
+      # scale_fill_gradientn(colours = terrain.colors(10))
+  }
+
+  if (percentile == TRUE){
+    plt <- ggplot(gcounty_pop) +
+      geom_polygon(aes(long, lat, group = group, fill = pcls),
+                   color = "grey", size = 0.1) +
+      geom_polygon(aes(long, lat, group = group),
+                   fill = NA, data = gusa, color = "lightgrey") +
+      coord_map("bonne", parameters = 41.6) + ggthemes::theme_map() +
+      scale_fill_manual(values = mycolors, na.value = "grey") +
+      # scale_fill_brewer(palette = "viridis", na.value = "grey") +
+      theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)),
+            legend.background = element_rect(fill = NA), 
+            legend.position = "left")
+  }
+  plt <- plt + labs(fill=legend_title) + ggtitle(graphic_title)
+  plt
+}
+```
+
+```{r}
+subset_census
+```
+
+```{r}
+subset_census['pct_infected'] <- subset_census['confirmed_cases']/subset_census['total_pop']
+subset_census['pct_deaths'] <- subset_census['deaths']/subset_census['total_pop']
+subset_census$death_rate <- subset_census$deaths/subset_census$confirmed_cases
+subset_census$county_fips_code <-as.integer(subset_census$county_fips_code)
+subset_census$elderly_pop <- subset_census$male_elderly_pop + subset_census$female_elderly_pop
+subset_census$pct_elderly <- subset_census$elderly_pop/subset_census$total_pop
+subset_census
+```
+```{r}
+plot_vs_county(subset_census, "pct_infected", legend_title = "Percent Infected")
+plot_vs_county(subset_census, "pct_infected", percentile = TRUE, banks=11, 
+               legend_title = "Percentile Infected",
+               graphic_title = "Percentile of Percentage of People Infected by County")
+plot_vs_county(subset_census, "pct_deaths", percentile = TRUE, banks=11, 
+               legend_title = "Percentile Deaths",
+               graphic_title = "Percentile of Percentage of Deaths by County")
+plot_vs_county(subset_census, "death_rate", percentile = TRUE, banks=11, 
+               legend_title = "Percentile Mortality Rate",
+               graphic_title = "Percentile of Mortality Rate by County")
+plot_vs_county(subset_census, "death_rate", 
+               legend_title = "Percentile Mortality Rate",
+               graphic_title = "Percentile of Mortality Rate by County")
+```
+```{r}
+normed_census_attributes
+```
+
+
+```{r}
+plot_vs_county(subset_census, "total_pop", 
+               percentile = T,
+               banks = 11,
+               legend_title = "Percentile",
+               graphic_title = "Population Density by County")
+plot_vs_county(subset_census, "median_income", 
+               percentile = T,
+               banks = 11,
+               legend_title = "Percentile of Median Income",
+               graphic_title = "Median Income by County")
+plot_vs_county(normed_census_attributes %>% 
+                 mutate(county_fips_code = subset_census$county_fips_code),
+               "pct_elderly", 
+               percentile = T,
+               banks = 11,
+               legend_title = "Percentile of Elderly Population",
+               graphic_title = "Elderly Population by County")
+```
+
+
+```{r}
+census_corr_cols <- colnames(subset_census)
+census_corr_cols <- census_corr_cols[-1]
+census_corr_cols
+```
+
+```{r}
+subset_census
+```
+```{r}
+keep_cols <- c("confirmed_cases", "deaths", "median_income", "male_pop", "female_pop", "total_pop", "median_age", "worked_at_home", "male_65_to_66", "male_67_to_69", 
+               "male_70_to_74", "male_75_to_79", "male_80_to_84",
+               "male_85_and_over", "female_65_to_66", "female_67_to_69", 
+               "female_70_to_74", "female_75_to_79", "female_80_to_84",
+               "female_85_and_over")
+ggcorr(cases_plus_census[keep_cols], 
+       low="red", mid="grey", high="blue", hjust= 1, size=3, 
+       label = TRUE, label_size = 3, label_color = "white", layout.exp = 4) +
+  ggplot2::labs(title = "Pearson Correlation of Important Variables in the U.S. Census")
+
+ggsave("./../imgs/small_census_pearson.png")
+```
+```{r}
+# keep_cols <- c("county_fips_code", "confirmed_cases", "deaths", "median_income", "male_pop", "female_pop", "total_pop", "median_age", "worked_at_home", "male_65_to_66", "male_67_to_69", 
+#                "male_70_to_74", "male_75_to_79", "male_80_to_84",
+#                "male_85_and_over", "female_65_to_66", "female_67_to_69", 
+#                "female_70_to_74", "female_75_to_79", "female_80_to_84",
+#                "female_85_and_over")
+keep_cols <- c("county_fips_code", "confirmed_cases", "deaths", "median_income", "male_pop", "female_pop", "total_pop", "median_age", "worked_at_home", "male_65_to_66", "male_67_to_69", 
+               "male_70_to_74", "male_75_to_79", "male_80_to_84",
+               "male_85_and_over", "female_65_to_66", "female_67_to_69", 
+               "female_70_to_74", "female_75_to_79", "female_80_to_84",
+               "female_85_and_over")
+
+group_keeps <- list(c("county_fips_code", "confirmed_cases"), 
+                    c("county_fips_code", "deaths"),
+                    c("county_fips_code", "median_income"),
+                    c("county_fips_code", "male_pop", "female_pop", "total_pop"),
+                    c("county_fips_code", "median_age"), 
+                    c("county_fips_code", "male_65_to_66", "male_67_to_69", 
+               "male_70_to_74", "male_75_to_79", "male_80_to_84",
+               "male_85_and_over", "female_65_to_66", "female_67_to_69", 
+               "female_70_to_74", "female_75_to_79", "female_80_to_84",
+               "female_85_and_over"))
+
+# for (keep_col in group_keeps) {
+#   plt <- cases_plus_census[keep_col] %>% 
+#     pivot_longer(!county_fips_code, names_to = "Variable", values_to = "value") %>%
+#     select(Variable, value) %>%
+#     ggplot(aes(x=Variable, y=value, fill=Variable)) +
+#       geom_boxplot() +
+#       # scale_fill_viridis(discrete = TRUE, alpha=0.6, option="A") +
+#       # theme_ipsum() +
+#       # theme(
+#       #   legend.position="none",
+#       #   plot.title = element_text(size=11)
+#       # ) +
+#       ggtitle("Violin chart") +
+#       geom_jitter(size=.5)+
+#       xlab("")
+#   print(plt)
+#   
+# }
+
+# ones_to_look_at <- c("county_fips_code", "male_65_to_66", "male_67_to_69", 
+#                "male_70_to_74", "male_75_to_79", "male_80_to_84",
+#                "male_85_and_over", "female_65_to_66", "female_67_to_69", 
+#                "female_70_to_74", "female_75_to_79", "female_80_to_84",
+#                "female_85_and_over")
+# plt <- cases_plus_census[ones_to_look_at] %>% 
+#     pivot_longer(!county_fips_code, names_to = "Variable", values_to = "value") %>%
+#     select(Variable, value) %>%
+#     ggplot(aes(x=Variable, y=value, fill=Variable, layout.exp =20 )) +
+#       geom_boxplot(layout.exp = 20) +
+#       # scale_fill_viridis(discrete = TRUE, alpha=0.6, option="A") +
+#       # theme_ipsum() +
+#       # theme(
+#       #   legend.position="none",
+#       #   plot.title = element_text(size=11)
+#       # ) +
+#       ggtitle("Violin chart") +
+#       # geom_jitter(size=.5)+
+#       xlab("")
+#   print(plt)
+
+keep_cols <- c("county_fips_code", "confirmed_cases", "deaths", "median_income", "median_age", "worked_at_home")
+
+plt <- cases_plus_census[keep_cols] %>% 
+    pivot_longer(!county_fips_code, names_to = "Variable", values_to = "value") %>%
+    select(Variable, value) %>%
+  ggplot(
+    aes(x=Variable, y=value, fill=Variable))+
+  geom_boxplot()+
+  #   aes(x=value, color=Variable, fill=Variable))+
+  # geom_histogram()+
+  
+    # aes(x=Variable, y=value, fill=Variable))+
+  # geom_violin()+
+
+  theme(axis.text.x = element_text(size=6))+
+  # xlab("Population") +
+  # ylab("Assigned Probability (%)") +
+  facet_wrap(~Variable)
+plt
+```
+
+
+
+
+
+
+```{r}
+# ones_to_look_at <- c("county_fips_code", "male_65_to_66", "male_67_to_69",
+#                "male_70_to_74", "male_75_to_79", "male_80_to_84",
+#                "male_85_and_over", "female_65_to_66", "female_67_to_69",
+#                "female_70_to_74", "female_75_to_79", "female_80_to_84",
+#                "female_85_and_over")
+# ones_to_look_at <- c("county_fips_code", "male_65_to_66", "male_67_to_69")
+plt <- cases_plus_census[ones_to_look_at] %>% 
+  pivot_longer(!county_fips_code, names_to = "Variable", values_to = "value") %>%
+  select(Variable, value) %>%
+#   gather(Variable, value, -county_fips_code) %>%
+#     ggplot(aes(value, fill = Variable)) + geom_histogram() + facet_wrap(~county_fips_code)
+# 
+# plt
+
+  ggplot( aes(x=value, color=Variable, fill=Variable)) +
+      geom_histogram(alpha=0.6, binwidth = 5) +
+      # scale_fill_viridis(discrete=TRUE) +
+      # scale_color_viridis(discrete=TRUE) +
+      # theme_ipsum() +
+      # theme(
+      #   legend.position="none",
+      #   panel.spacing = unit(0.1, "lines"),
+      #   strip.text.x = element_text(size = 8)
+      # ) +
+      theme(axis.text.x = element_text(size=6))+
+      xlab("Population") +
+      ylab("Assigned Probability (%)") +
+      facet_wrap(~Variable)
+
+plt
+```
+
+```{r}
+# png("./test.png", width=800, height = 800)
+census_corr_cols <- colnames(subset_census)
+census_corr_cols <- census_corr_cols[-1]
+normed_census_attributes <- subset_census[census_corr_cols] %>%
+  mutate(pct_female_elderly = female_elderly_pop/total_pop,
+         pct_male_elderly = male_elderly_pop/total_pop,
+         pct_worked_at_home = worked_at_home/total_pop,
+         pct_female_pop = female_pop/total_pop,
+         pct_male_pop = male_pop/total_pop) %>%
+  rename(mortality_rate = death_rate) %>%
+  select(mortality_rate, pct_deaths, pct_infected, pct_elderly,
+         pct_female_elderly, pct_male_elderly, pct_female_pop, pct_male_pop,
+         pct_worked_at_home, median_age, median_income)
+  
+ggcorr(normed_census_attributes, low="red", mid="grey", high="blue", hjust= .9, size=3, 
+       label = TRUE, label_size = 3, label_color = "white", layout.exp = 3) +
+  ggplot2::labs(title = "Pearson Correlation of Important Variables in the U.S. Census")
+
+ggsave("./../imgs/census_pearson.png")
+
+# dev.off()
+```
+```{r}
+global_mobility_report
+```
+
+
+```{r}
+country_date_pct_change <- global_mobility_report %>% select(country_region_code
+                                                             | contains("date") 
+                                                             | contains("percent"))
+country_date_pct_change
+```
+```{r}
+coi_downsampled <- country_date_pct_change %>% filter(country_region_code %in% 
+                                                        c("US", "CA", "NZ", "AE", "CN", "DE", "JP")) %>% 
+  filter(weekdays(date) == "Saturday") %>% group_by(country_region_code, date) %>% summarise_all(mean, na.rm = T) %>% arrange(country_region_code, date)
+coi_downsampled
+```
+
+
+
+```{r}
+interested_cols <- c("retail_and_recreation_percent_change_from_baseline",
+                     "grocery_and_pharmacy_percent_change_from_baseline",
+                     "parks_percent_change_from_baseline",
+                     "transit_stations_percent_change_from_baseline",
+                     "workplaces_percent_change_from_baseline",
+                     "residential_percent_change_from_baseline")
+
+col_labels <- c("Average Retail and Recreation Percent Change from Baseline",
+                     "Average Grocery and Pharmacy Percent Change from Baseline",
+                     "Average Parks Percent Change from Baseline",
+                     "Average Transit Stations Percent Change from Baseline",
+                     "Average Workplaces Percent Change from Baseline",
+                     "Average Residential Percent Change from Baseline")
+
+
+for (i in 1:length(col_labels)){
+  print(i)
+  plt <- ggplot(coi_downsampled,
+       aes(x=date, y=get(interested_cols[i]), group=country_region_code,
+                            color=country_region_code))+
+  geom_point(aes(y=rollmean(get(interested_cols[i]), k=10, na.pad=TRUE)), size=.5)+
+  geom_line(aes(y=rollmean(get(interested_cols[i]), k=10, na.pad=TRUE)))+
+  # geom_point(size=.5)+geom_line()+
+  labs(y = col_labels[i], x = "Date", color = "Country")+
+  theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)),
+        axis.title.y = element_text(size = 8))+
+    ggplot2::labs(title = paste("Saturday", col_labels[i], sep=" "))
+  save_path <- paste(c("./../imgs/", interested_cols[i], ".png"), collapse = "")
+  ggsave(save_path)
+  print(plt)
+}
+# ggplot(coi_downsampled,
+#        aes(x=date, y=grocery_and_pharmacy_percent_change_from_baseline, group=country_region_code,
+#                             color=country_region_code))+
+  # geom_point(aes(y=rollmean(retail_and_recreation_percent_change_from_baseline, k=10, na.pad=TRUE)), size=.5)+
+#   geom_line(aes(y=rollmean(retail_and_recreation_percent_change_from_baseline, k=10, na.pad=TRUE)))+
+#   # geom_point(size=.5)+geom_line()+
+#   labs(y = "Average Grocery and Pharmacy Percent Change from Baseline", x = "Date", color = "Country")+
+#   theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)),
+#         axis.title.y = element_text(size = 8))
+#   # geom_line()
+```
+
+```{r}
+
+```
+
+
+```{r}
+tx_county_data <- tx_data %>% filter(county_name != "Statewide Unallocated")
+tx_total_state_data <- tx_data %>% filter(county_name == "Statewide Unallocated")
+tx_total_state_data$cumulative_deaths <- cumsum(tx_total_state_data$deaths)
+tx_total_state_data$cumulative_cases <- cumsum(tx_total_state_data$confirmed_cases)
+tx_county_data
+tx_total_state_data
+```
+
+```{r}
+col_labels <- c("Average Retail and Recreation Percent Change from Baseline",
+                     "Average Grocery and Pharmacy Percent Change from Baseline",
+                     "Average Parks Percent Change from Baseline",
+                     "Average Transit Stations Percent Change from Baseline",
+                     "Average Workplaces Percent Change from Baseline",
+                     "Average Residential Percent Change from Baseline")
+paste("Mondays", col_labels[1], sep=" ")
+```
+
+
+Since the above doesn't really make sense (only 78 confirmed cases with over a thousand deaths), I am going to analyze on a per county basis and maybe that data will be more clear.
+
+```{r}
+tx_by_day_based_on_county <- tx_county_data %>% 
+  select(date, confirmed_cases, deaths) %>%
+  group_by(date) %>% 
+  summarise_all(sum, na.rm = T) %>%
+  arrange(date)
+
+# interested_cols <- c("confirmed_cases", "deaths")
+# col_labels <- c("Total Cases", "Total Deaths")
+# 
+# for (i in 1:length(col_labels)){
+#   print(i)
+#   title <- paste(c("Texas ", col_labels[i]), collapse = "")
+#   plt <- ggplot(tx_by_day_based_on_county,
+#        aes(x=date, y=get(interested_cols[i])))+
+#   # geom_point(aes(y=rollmean(get(interested_cols[i]), k=10, na.pad=TRUE)), size=.5)+
+#   # geom_line(aes(y=rollmean(get(interested_cols[i]), k=10, na.pad=TRUE)))+
+#   # geom_point(size=.5)+geom_line()+
+#     geom_line(color)+
+#   labs(y = col_labels[i], x = "Date", title = title)
+#   # theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)),
+#   #       axis.title.y = element_text(size = 8))
+#   # save_path <- paste(c("./../imgs/", interested_cols[i], ".png"), collapse = "")
+#   # ggsave(save_path)
+#   print(plt)
+# }
+
+```
+```{r}
+tx_by_day_based_on_county
+```
+
+```{r}
+install.packages("ggrepel")
+library(ggrepel)
+```
+```{r}
+tx_by_day_based_on_county %>% pivot_longer(!date, names_to = "type", values_to = "count")
+```
+
+
+```{r}
+# t <- tibble("Max" = c(34378, 2248927), "date" = c("2021-01-25", "2021-01-25"),
+#             "type" = c("deaths", "confirmed_cases"))
+# t$date <- as.Date(t$date)
+# t 
+
+data_ends <- tx_by_day_based_on_county %>% pivot_longer(!date, names_to = "type", values_to = "count") %>% 
+  group_by(type) %>% 
+  top_n(1, count) 
+data_ends
+
+```
+
+
+
+```{r}
+library(scales)
+# png("./../imgs/texas_covid_cases_total.png", width = 800, height = 800)
+# tx_by_day_based_on_county %>% pivot_longer(!date, names_to = "type", values_to = "count")
+ggplot(tx_by_day_based_on_county %>% pivot_longer(!date, names_to = "type", values_to = "count"),
+       aes(x=date, y=count, group=type))+
+         geom_line(aes(color=type))+
+  # scale_y_continuous(trans = "log10",
+  #                    labels = trans_breaks('log10', math_format(10^.x)))+
+  scale_color_manual(labels = c("Confirmed Cases", "Deaths"), values = c("confirmed_cases"="blue",
+                                                                         "deaths"="red"))+
+  labs(y = "Total Persons", x = "Date", color = "")+
+  geom_text_repel(aes(label = count), data = data_ends, size=3)+
+  # scale_y_continuous(sec.axis = sec_axis(~ ., breaks = data_ends))+
+  theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)))+
+  ggtitle("Texas COVID-19 Cases")
+  
+# plt+ 
+# ggplot(t, 
+#              aes(x=Date, y= Max))+
+#   geom_point()
+# plt + geom_text_repel(aes(label = Max), data = t, fontface="plain", color="black",
+#                   size=3)
+# dev.off()
+
+ggsave("./../imgs/texas_covid_cases_total.png")
+  # scale_y_log10()
+         # labs(y = "Total Persons", x = "Date"))
+
+# )
+# 
+# plt <- ggplot(coi_downsampled,
+#        aes(x=date, y=get(interested_cols[i]), group=country_region_code,
+#                             color=country_region_code))+
+#   geom_point(aes(y=rollmean(get(interested_cols[i]), k=10, na.pad=TRUE)), size=.5)+
+#   geom_line(aes(y=rollmean(get(interested_cols[i]), k=10, na.pad=TRUE)))+
+#   # geom_point(size=.5)+geom_line()+
+#   labs(y = col_labels[i], x = "Date", color = "Country")+
+#   theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)),
+#         axis.title.y = element_text(size = 8))
+#   save_path <- paste(c("./../imgs/", interested_cols[i], ".png"), collapse = "")
+#   ggsave(save_path)
+#   print(plt)
+```
+
+```{r}
+tx_county_data
+```
+
+
+```{r}
+subset_census
+
+tx_state <- map_data("state") %>% subset(region == "texas")
+tx_county_map_data <- map_data("county") %>% subset(region == "texas")
+
+tx_state
+tx_county_map_data
+
+gcounty <- map_data("county")
+# 
+# fipstab <-
+#       transmute(maps::county.fips, fips, county = sub(":.*", "", polyname)) %>%
+#       unique() %>%
+#       separate(county, c("region", "subregion"), sep = ",")
+
+# Format with subregions
+fipstab <-
+  transmute(maps::county.fips, fips, county = sub(":.*", "", polyname)) %>%
+  unique() %>%
+  separate(county, c("region", "subregion"), sep = ",")
+  
+  # # Combine in desired order (NA for missing)
+  # gcounty <- left_join(gcounty, fipstab, c("region", "subregion"))
+
+
+tx_geo_data <- left_join(gcounty, fipstab, c("region", "subregion")) %>%
+  left_join(subset_census, c("fips" = "county_fips_code")) %>% filter(region == "texas") %>%
+  unique()
+
+tx_geo_data$dinfect_pcls <- cut(100 * percent_rank(tx_geo_data$pct_infected), seq(0, 100, len = 11),
+                        include.lowest = TRUE)
+tx_geo_data$deaths_pcls <- cut(100 * percent_rank(tx_geo_data$pct_deaths), seq(0, 100, len = 11),
+                        include.lowest = TRUE)
+tx_geo_data$death_rate_pcls <- cut(100 * percent_rank(tx_geo_data$death_rate), seq(0, 100, len = 11),
+                        include.lowest = TRUE)
+
+tx_geo_data
+
+
+# 
+# # Lowercase
+# tx_county_data$county_name <- tolower(tx_county_data$county_name)
+# 
+# # Remove ' county'
+# tx_county_data$county_name <- sub("\\s*county\\b.*", "", tx_county_data$county_name)
+# tx_county_data
+# 
+# # Get max confirmed cases and deaths
+# tx_county_data
+# 
+# 
+# # # Join the data with state geo info
+# # tx_geo_data <- left_join(tx_county_map_data, tx_county_data, by = c("subregion" = "county_name"))
+# # tx_geo_data
+```
+```{r}
+
+mycolors <- colorRampPalette(brewer.pal(9, "Reds"))(11)
+
+ggplot(tx_geo_data)+
+  coord_map() + ggthemes::theme_map()+
+  geom_polygon(aes(long, lat, group = group, fill=death_rate_pcls))+
+  scale_fill_manual(values = mycolors, na.value = "grey") +
+  theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)), legend.position = "left")+
+  #       legend.background = element_rect(fill = NA),
+        # legend.position = "left")+
+  labs(fill="Percentile") + ggtitle("Texas County Mortality Rate Percentiles")
+
+ggsave("./../imgs/texas_county_mortality_percentiles.png")
+
+# ggplot(tx_geo_data) +
+#       geom_polygon(aes(long, lat, group = group, fill = death_rate_pcls),
+#                    color = "grey", size = 0.1) +
+#       # geom_polygon(aes(long, lat, group = group),
+#       #              fill = NA, data = gusa, color = "lightgrey") +
+#       coord_map("bonne", parameters = 41.6) + ggthemes::theme_map() +
+#       scale_fill_manual(values = mycolors, na.value = "grey") +
+#       # scale_fill_brewer(palette = "viridis", na.value = "grey") +
+#       theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)),
+#             legend.background = element_rect(fill = NA),
+#             legend.position = "left")
+
+
+
+# if (percentile == TRUE){
+#     plt <- ggplot(gcounty_pop) +
+#       geom_polygon(aes(long, lat, group = group, fill = pcls),
+#                    color = "grey", size = 0.1) +
+#       geom_polygon(aes(long, lat, group = group),
+#                    fill = NA, data = gusa, color = "lightgrey") +
+#       coord_map("bonne", parameters = 41.6) + ggthemes::theme_map() +
+#       scale_fill_manual(values = mycolors, na.value = "grey") +
+#       # scale_fill_brewer(palette = "viridis", na.value = "grey") +
+#       theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)),
+#             legend.background = element_rect(fill = NA), 
+#             legend.position = "left")
+    
+
+# plt <- ggplot(gcounty_pop) +
+#       geom_polygon(aes(long, lat, group = group, fill = dinfect_pcls),
+#                    color = "grey", size = 0.1) +
+#       geom_polygon(aes(long, lat, group = group),
+#                    fill = NA, data = gusa, color = "lightgrey") +
+#       coord_map("bonne", parameters = 41.6) + ggthemes::theme_map() +
+#       scale_fill_manual(values = mycolors, na.value = "grey") +
+#       # scale_fill_brewer(palette = "viridis", na.value = "grey") +
+#       theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)),
+#             legend.background = element_rect(fill = NA),
+#             legend.position = "left")
+
+# ggplot(tx_geo_data) +
+#          coord_map() + 
+#   ggthemes::theme_map()+
+#   geom_polygon(aes(long, lat, group = subregion, fill = confirmed_cases))
+# pc_cont_iowa <- geom_polygon(aes(long, lat, group = group, fill = pchange),
+#                              color = "grey", size = 0.2)
+```
+```{r}
+data_ends <- dallas_data %>% pivot_longer(!date, names_to = "type", values_to = "count") %>% 
+  group_by(type) %>% 
+  top_n(1, count) 
+data_ends
+```
+
+```{r}
+# dallas_data <- tx_county_data %>% filter(county_name == "dallas") 
+dallas_data <- tx_county_data %>% filter(county_name == "Dallas County") %>% 
+  select(date, confirmed_cases, deaths)
+
+data_ends <- dallas_data %>% pivot_longer(!date, names_to = "type", values_to = "count") %>% 
+  group_by(type) %>% 
+  top_n(1, count) 
+
+ggplot(dallas_data %>% pivot_longer(!date, names_to = "type", values_to = "count"),
+       aes(x=date, y=count, group=type))+
+         geom_line(aes(color=type))+
+  # scale_y_continuous(trans = "log10", labels = trans_breaks("log10", math_format(10^.x)))+
+  # scale_y_log10(breaks=c(100, 300, 500, 1000, 3000, 5000, 10000, 30000, 50000, 100000, 300000),
+  #               labels=c('100', '300', '500', '1000', '3000', '5000', '10000', '30000', '50000', '100000', '300000'))+
+  scale_color_manual(labels = c("Confirmed Cases", "Deaths"), values = c("confirmed_cases"="blue",
+                                                                         "deaths"="red"))+
+  labs(y = "Total Persons", x = "Date", color = "")+
+  geom_text_repel(aes(label = count), data = data_ends, size=3)+
+  theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)))+
+  ggtitle("Dallas COVID-19 Cases")
+  ggsave("./../imgs/dallas_covid_cases_total.png")
+```
+
+
+```{r}
+sgcounty <- map_data("state")
+
+# Format with subregions
+fipstab <-
+  transmute(maps::county.fips, fips, county = sub(":.*", "", polyname)) %>%
+  unique() %>%
+  separate(county, c("region", "subregion"), sep = ",")
+
+us_geo_data <- left_join(gcounty, fipstab, c("region", "subregion")) %>%
+  left_join(subset_census, c("fips" = "county_fips_code")) %>%
+  unique() %>% select(long, lat, region, subregion, group, confirmed_cases, deaths, median_income, 
+                      male_pop, female_pop, total_pop, median_age,
+                      worked_at_home)
+# us_geo_data
+
+# Get the total cases by state
+state_data_breakdown <- us_geo_data %>% 
+  drop_na() %>% select(region, subregion, confirmed_cases, deaths, median_income, 
+                      male_pop, female_pop, total_pop, median_age,
+                      worked_at_home) %>% unique() %>%
+  group_by(region) %>% select_if(is.numeric) %>%
+  summarise_all(sum)
+
+state_data_breakdown$pct_deaths <- state_data_breakdown$deaths/state_data_breakdown$total_pop
+state_data_breakdown$pct_infect <- state_data_breakdown$confirmed_cases/state_data_breakdown$total_pop
+state_data_breakdown$death_rate <- state_data_breakdown$deaths/state_data_breakdown$confirmed_cases
+
+print(state_data_breakdown %>% arrange(death_rate, decreasing=T))
+
+state_geo_data <- us_geo_data %>% select(long, lat, region, group) %>% left_join(state_data_breakdown,
+                                                        by = "region")
+
+state_geo_data
+
+# ggplot(tx_by_day_based_on_county %>% pivot_longer(!date, names_to = "type", values_to = "count"),
+#        aes(x=date, y=count, group=type, color = type))+
+#          geom_line()+
+#   scale_y_continuous(trans = "log10",
+#                      labels = trans_breaks('log10', math_format(10^.x)))+
+#   scale_color_manual(labels = c("Confirmed Cases", "Deaths"), values = c("confirmed_cases"="blue",
+#                                                                          "deaths"="red"))+
+#   labs(y = "Total Persons", x = "Date", color = "")+
+#   theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)))+
+#   ggtitle("US COVID-19 Cases")
+  # ggsave("./../imgs/texas_covid_cases_total.png")
+```
+
+```{r}
+# state_geo_data$state_group <- factor
+state_geo_data$state_group <- factor(state_geo_data$region) 
+state_geo_data$state_group <- as.numeric(state_geo_data$state_group)
+state_geo_data
+```
+
+
+
+```{r}
+state_data_breakdown %>% select(region, death_rate) %>% arrange(death_rate) 
+```
+```{r}
+# http://homepage.stat.uiowa.edu/~luke/classes/STAT4580-2020/maps.html
+
+library(scales)
+sp <- select(state_data_breakdown, region = region, death_rate)
+gusa <- map_data("state")
+
+gusa_pop <- left_join(gusa, sp, "region")
+gusa_pop
+
+ggplot(gusa_pop) +
+    geom_polygon(aes(long, lat, group = group, fill = death_rate), color="grey") +
+    coord_map("bonne", parameters = 41.6) +
+    ggthemes::theme_map()+
+  theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)))+
+  scale_fill_gradient(labels = percent)+
+  ggtitle("Mortality Rate by State")+
+  labs(fill="Mortality Rate")
+
+ggsave("./../imgs/mortality_rate_by_state.png")
+```
+```{r}
+tx_data
+cases_plus_census
+```
+
+
+
+```{r}
+tx_county_data
+```
+```{r}
+# Get the first occurrences of covid case after first tx case
+tx_first_cases_by_county <- tx_county_data %>% filter(confirmed_cases > 0) %>% 
+  group_by(county_name) %>%
+  arrange(date) %>% slice_min(order_by = date, n = 1) %>% 
+  select(county_fips_code, county_name, date)
+
+first_day_in_tx <- min(tx_first_cases_by_county$date)
+
+tx_first_cases_by_county <- tx_first_cases_by_county %>% 
+  mutate(days_from_first_tx_case = date - first_day_in_tx) %>%
+  mutate(county_fips_code = as.integer(county_fips_code))
+
+tx_first_cases_by_county
+```
+
+```{r}
+tx_first_cases_by_county %>% filter(days_from_first_tx_case == time_length(0, "days"))
+```
+
+
+```{r}
+tx_state <- map_data("state") %>% subset(region == "texas")
+tx_county_map_data <- map_data("county") %>% subset(region == "texas")
+
+gcounty <- map_data("county")
+
+# Format with subregions
+fipstab <-
+  transmute(maps::county.fips, fips, county = sub(":.*", "", polyname)) %>%
+  unique() %>%
+  separate(county, c("region", "subregion"), sep = ",") %>% filter(region == "texas")
+
+
+fipstab
+tx_geo_days <- left_join(gcounty, fipstab, c("region", "subregion")) %>%
+  left_join(tx_first_cases_by_county, c("fips" = "county_fips_code")) %>% filter(region == "texas") %>%
+  unique()
+
+tx_geo_days
+# 
+# tx_geo_data$dinfect_pcls <- cut(100 * percent_rank(tx_geo_data$pct_infected), seq(0, 100, len = 11),
+#                         include.lowest = TRUE)
+# tx_geo_data$deaths_pcls <- cut(100 * percent_rank(tx_geo_data$pct_deaths), seq(0, 100, len = 11),
+#                         include.lowest = TRUE)
+# tx_geo_data$death_rate_pcls <- cut(100 * percent_rank(tx_geo_data$death_rate), seq(0, 100, len = 11),
+#                         include.lowest = TRUE)
+# 
+# tx_geo_data
+
+# # Lowercase
+# tx_county_data$county_name <- tolower(tx_county_data$county_name)
+# 
+# # Remove ' county'
+# tx_county_data$county_name <- sub("\\s*county\\b.*", "", tx_county_data$county_name)
+# tx_county_data
+```
+
+```{r}
+ggplot(tx_geo_days %>% mutate(days_from_first_tx_case = as.integer(days_from_first_tx_case))) +
+  coord_map() + ggthemes::theme_map()+
+  geom_polygon(aes(long, lat, group = group, fill=days_from_first_tx_case))+
+  # scale_fill_manual(values = mycolors, na.value = "grey") +
+  theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)), legend.position = "left")+
+  #       legend.background = element_rect(fill = NA),
+        # legend.position = "left")+
+  labs(fill="Days from First TX Case") + ggtitle("Texas Spread of COVID-19")+
+  # scale_fill_manual(low="red", mid="grey", high="blue")
+  scale_fill_gradient(low = "grey", high = "red", na.value = NA)+
+  geom_text(data=cnames, aes(long, lat, label=subregion), size=3)
+ggsave("./../imgs/tx_spread_days.png")
+  # scale_fill_gradient(low="red", mid="grey", high="blue")
+  # scale_fill_gradientn()
+  # scale_colour_gradient2()
+  
+```
+```{r}
+ggplot(tx_geo_data) +
+  coord_map() + ggthemes::theme_map()+
+  geom_polygon(aes(long, lat, group = group, fill=median_income))+
+  # scale_fill_manual(values = mycolors, na.value = "grey") +
+  theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)), legend.position = "left")+
+  #       legend.background = element_rect(fill = NA),
+        # legend.position = "left")+
+  labs(fill="Days from First TX Case") + ggtitle("Texas Spread of COVID-19")+
+  # scale_fill_manual(low="red", mid="grey", high="blue")
+  scale_fill_gradient(low = "grey", high = "red", na.value = NA)
+```
+```{r}
+cnames <- aggregate(cbind(long, lat) ~ subregion, data=tx_county_map_data, 
+                    FUN=function(x)mean(range(x)))
+
+mycolors <- colorRampPalette(brewer.pal(9, "Reds"))(11)
+
+ggplot(tx_geo_data)+
+  coord_map() + ggthemes::theme_map()+
+  geom_polygon(aes(long, lat, group = group, fill=death_rate_pcls))+
+  scale_fill_manual(values = mycolors, na.value = "grey") +
+  theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)), legend.position = "left")+
+  #       legend.background = element_rect(fill = NA),
+        # legend.position = "left")+
+  labs(fill="Percentile") + ggtitle("Texas County Mortality Rate Percentiles")+
+  geom_text(data=cnames, aes(long, lat, label = subregion), size=3)
+```
+
+```{r}
+# Get top 5 worst and best mortality rates counties
+worst_counties <- tx_geo_data %>%
+  select(subregion, pct_deaths) %>%
+  distinct() %>%
+  slice_max(pct_deaths, n=3) %>%
+  select(subregion)
+
+best_counties <- tx_geo_data %>%
+  select(subregion, pct_deaths) %>%
+  distinct() %>%
+  slice_min(pct_deaths, n=3) %>%
+  select(subregion)
+
+worst_counties <- worst_counties$subregion
+best_counties <- best_counties$subregion
+
+worst_counties
+best_counties
+
+my_counties <- c("harris", "dallas", "bexar", "travis", "collin")
+cnames <- aggregate(cbind(long, lat) ~ subregion, data=tx_county_map_data,
+                    FUN=function(x)mean(range(x))) %>%
+  # filter(subregion %in% worst_counties | subregion %in% best_counties)
+  filter(subregion %in% my_counties)
+
+cnames
+
+mycolors <- colorRampPalette(brewer.pal(9, "Reds"))(11)
+
+ggplot(tx_geo_data)+
+  coord_map() + ggthemes::theme_map()+
+  geom_polygon(aes(long, lat, group = group, fill=death_rate_pcls))+
+  scale_fill_manual(values = mycolors, na.value = "grey") +
+  theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)), legend.position = "left")+
+  #       legend.background = element_rect(fill = NA),
+        # legend.position = "left")+
+  labs(fill="Percentile") + ggtitle("Texas County Mortality Rate Percentiles")+
+  geom_text(data=cnames, aes(long, lat, label=subregion), size=3)
+  # geom_text(data=cnames, aes(long, lat, label = subregion), size=3)
+
+ggsave("./../imgs/texas_county_mortality_percentiles.png")
+```
+```{r}
+tx_county_data
+```
+
+
+
+
+```{r}
+subset_census %>% select_if(is.numeric) %>% summarise_all(mean)
+```
+
