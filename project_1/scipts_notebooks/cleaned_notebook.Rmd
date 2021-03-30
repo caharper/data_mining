@@ -27,7 +27,7 @@ load_file <- function(file_path){
 
 tx_data <- load_file("./../data/COVID-19_cases_TX.csv")
 global_mobility_report <- load_file("./../data/Global_Mobility_Report.csv")
-cases_plus_census <- load_file("./../data/COVID-19_cases_plus_census.csv")
+# cases_plus_census <- load_file("./../data/COVID-19_cases_plus_census.csv")
 ```
 ```{r}
 cols_keep <- c("county_fips_code", "confirmed_cases", "deaths", "median_income", "male_pop", "female_pop", "total_pop", "median_age", "worked_at_home", "male_65_to_66", "male_67_to_69", 
@@ -442,7 +442,7 @@ country_date_pct_change
 ```{r}
 coi_downsampled <- country_date_pct_change %>% filter(country_region_code %in% 
                                                         c("US", "CA", "NZ", "AE", "CN", "DE", "JP")) %>% 
-  filter(weekdays(date) == "Monday") %>% group_by(country_region_code, date) %>% summarise_all(mean, na.rm = T) %>% arrange(country_region_code, date)
+  filter(weekdays(date) == "Saturday") %>% group_by(country_region_code, date) %>% summarise_all(mean, na.rm = T) %>% arrange(country_region_code, date)
 coi_downsampled
 ```
 
@@ -474,7 +474,8 @@ for (i in 1:length(col_labels)){
   # geom_point(size=.5)+geom_line()+
   labs(y = col_labels[i], x = "Date", color = "Country")+
   theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)),
-        axis.title.y = element_text(size = 8))
+        axis.title.y = element_text(size = 8))+
+    ggplot2::labs(title = paste("Saturday", col_labels[i], sep=" "))
   save_path <- paste(c("./../imgs/", interested_cols[i], ".png"), collapse = "")
   ggsave(save_path)
   print(plt)
@@ -492,6 +493,11 @@ for (i in 1:length(col_labels)){
 ```
 
 ```{r}
+
+```
+
+
+```{r}
 tx_county_data <- tx_data %>% filter(county_name != "Statewide Unallocated")
 tx_total_state_data <- tx_data %>% filter(county_name == "Statewide Unallocated")
 tx_total_state_data$cumulative_deaths <- cumsum(tx_total_state_data$deaths)
@@ -501,7 +507,13 @@ tx_total_state_data
 ```
 
 ```{r}
-
+col_labels <- c("Average Retail and Recreation Percent Change from Baseline",
+                     "Average Grocery and Pharmacy Percent Change from Baseline",
+                     "Average Parks Percent Change from Baseline",
+                     "Average Transit Stations Percent Change from Baseline",
+                     "Average Workplaces Percent Change from Baseline",
+                     "Average Residential Percent Change from Baseline")
+paste("Mondays", col_labels[1], sep=" ")
 ```
 
 
