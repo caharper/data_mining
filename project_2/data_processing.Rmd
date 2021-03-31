@@ -1,0 +1,189 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+# Load in libraries 
+library(beeswarm)
+library(naniar)
+library(zoo)
+library(janitor)
+library(dplyr)
+library(plyr)
+library(tidyverse)
+library(ggplot2)
+library(GGally) # for ggpairs
+library(lubridate)
+```
+
+```{r}
+# Load in data (only care about census to cluster on)
+cases_plus_census <- read_csv("./../project_1/data/COVID-19_cases_plus_census.csv")
+cases_plus_census
+```
+
+```{r}
+# Add in the attributes we want to use
+cols_keep <- c("county_fips_code", "county_name", "state", "confirmed_cases", "deaths", "median_income", "male_pop", "female_pop", "total_pop", "median_age", "worked_at_home", "male_65_to_66", "male_67_to_69", 
+               "male_70_to_74", "male_75_to_79", "male_80_to_84",
+               "male_85_and_over", "female_65_to_66", "female_67_to_69", 
+               "female_70_to_74", "female_75_to_79", "female_80_to_84",
+               "female_85_and_over")
+subset_census <- cases_plus_census[cols_keep]
+
+subset_census$male_elderly_pop <- subset_census %>% select(c("male_65_to_66",
+                                                             "male_67_to_69", 
+                                                             "male_70_to_74",
+                                                             "male_75_to_79",
+                                                             "male_80_to_84",
+                                                             "male_85_and_over")
+                                                           ) %>% rowSums()
+
+subset_census$female_elderly_pop <- subset_census %>% select(c("female_65_to_66",
+                                                             "female_67_to_69", 
+                                                             "female_70_to_74",
+                                                             "female_75_to_79",
+                                                             "female_80_to_84",
+                                                             "female_85_and_over")
+                                                           ) %>% rowSums()
+
+
+cols_keep <- c("county_fips_code", "county_name", "state", "confirmed_cases", "deaths", "median_income",
+               "male_pop", "female_pop", "total_pop", "median_age",
+               "worked_at_home", "male_elderly_pop", "female_elderly_pop")
+
+subset_census <- subset_census[cols_keep]
+subset_census <- subset_census %>% 
+  mutate(county_fips_code = as.integer(county_fips_code)) %>%
+  mutate(state = as.factor(state))
+```
+```{r}
+
+columnNames <- colnames(subset_census)
+keep_cols <- columnNames[!columnNames %in% c("county_fips_code", "county_name")]
+
+# Aggregate by states (probably better way to do this but had issues with mean median income)
+mm_income <- subset_census %>% select(keep_cols) %>% group_by(state) %>%
+  summarise_at(c("median_income", "median_age"), mean) %>% ungroup() %>% 
+  dplyr::rename(mean_median_income = median_income) %>% 
+  dplyr::rename(mean_median_age = median_age)
+
+keep_cols <- columnNames[!columnNames %in% c("county_fips_code", "county_name", "median_income", "median_age")]
+agg_state_info <- subset_census %>% select(keep_cols) %>% group_by(state) %>%
+  summarize_if(is.numeric, sum) %>% ungroup() %>% 
+  left_join(mm_income, by="state")
+ 
+# Aggregated state information (not normalized!)
+agg_state_info
+```
+```{r}
+# To be able to compare properly, convert to percentages for aggregated population stats
+
+# Infections/deaths
+subset_census$pct_infected <- subset_census$confirmed_cases/subset_census$total_pop
+subset_census$pct_deaths <- subset_census$deaths/subset_census$total_pop
+subset_census$mortality_rate <- subset_census$deaths/subset_census$confirmed_cases
+
+# Male/female info
+subset_census$pct_male_population <- subset_census$male_pop/subset_census$total_pop
+subset_census$pct_female_population <- subset_census$female_pop/subset_census$total_pop
+
+# Intermediate calculation
+subset_census$elderly_pop <- subset_census$male_elderly_pop + subset_census$female_elderly_pop
+
+# Elderly Info
+subset_census$pct_elderly <- subset_census$elderly_pop/subset_census$total_pop
+subset_census$pct_male_elderly <- subset_census$male_elderly_pop/subset_census$total_pop
+subset_census$pct_female_elderly <- subset_census$female_elderly_pop/subset_census$total_pop
+
+# Work from home
+subset_census$pct_worked_at_home <- subset_census$worked_at_home/subset_census$total_pop
+
+# Only keep newly made values
+cols_keep <- c("county_fips_code", "county_name", "state", "pct_infected",
+               "pct_deaths", "mortality_rate", "pct_elderly", "pct_male_elderly",
+               "pct_female_elderly", "pct_male_population", 
+               "pct_female_population", "pct_worked_at_home",
+               "median_income", "median_age")
+
+
+subset_census <- subset_census[cols_keep]
+subset_census
+```
+```{r}
+# Percentages for state specific data
+
+# Infections/deaths
+agg_state_info$pct_infected <- agg_state_info$confirmed_cases/agg_state_info$total_pop
+agg_state_info$pct_deaths <- agg_state_info$deaths/agg_state_info$total_pop
+agg_state_info$mortality_rate <- agg_state_info$deaths/agg_state_info$confirmed_cases
+
+# Male/female info
+agg_state_info$pct_male_population <- agg_state_info$male_pop/agg_state_info$total_pop
+agg_state_info$pct_female_population <- agg_state_info$female_pop/agg_state_info$total_pop
+
+# Intermediate calculation
+agg_state_info$elderly_pop <- agg_state_info$male_elderly_pop + agg_state_info$female_elderly_pop
+
+# Elderly Info
+agg_state_info$pct_elderly <- agg_state_info$elderly_pop/agg_state_info$total_pop
+agg_state_info$pct_male_elderly <- agg_state_info$male_elderly_pop/agg_state_info$total_pop
+agg_state_info$pct_female_elderly <- agg_state_info$female_elderly_pop/agg_state_info$total_pop
+
+# Work from home
+agg_state_info$pct_worked_at_home <- agg_state_info$worked_at_home/agg_state_info$total_pop
+
+# Only keep newly made values
+cols_keep <- c("state", "pct_infected", "pct_deaths", "mortality_rate", 
+               "pct_elderly", "pct_male_elderly", "pct_female_elderly", 
+               "pct_male_population", "pct_female_population", 
+               "pct_worked_at_home", "mean_median_income", "mean_median_age")
+
+
+agg_state_info <- agg_state_info[cols_keep]
+agg_state_info
+```
+
+
+```{r}
+# Normalized attributes function
+scale_numeric <- function(x) x %>% mutate_if(is.double, function(y) as.vector(scale(y)))
+
+# Normalized full census data (with mean and std based on counties from all of U.S.)
+census_normed <- subset_census %>% scale_numeric()
+
+# Normalized state info (with mean and std based on counties from all of U.S.)
+agg_state_info_normed <- agg_state_info %>% scale_numeric()
+
+# These are the ones to use for clustering 
+census_normed
+agg_state_info_normed
+```
+
+
+```{r}
+# Example use to get TX specifically
+ks = 2:4
+WSS <- sapply(ks, FUN = function(k) {
+  kmeans(census_normed %>% filter(state=="TX") 
+         %>% select_if(is.double), centers = k, nstart = 5)$tot.withinss
+  })
+
+ggplot(as_tibble(ks, WSS), aes(ks, WSS)) + geom_line() +
+  geom_vline(xintercept = 4, color = "red", linetype = 2)
+```
+```{r}
+# Example using aggregated state data
+ks = 2:4
+WSS <- sapply(ks, FUN = function(k) {
+  kmeans(agg_state_info_normed  %>% select_if(is.double),
+         centers = k, nstart = 5)$tot.withinss
+  })
+
+ggplot(as_tibble(ks, WSS), aes(ks, WSS)) + geom_line() +
+  geom_vline(xintercept = 4, color = "red", linetype = 2)
+```
+
+
