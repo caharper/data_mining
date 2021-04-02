@@ -1,0 +1,663 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This notebook is for working with DBSCAN using the tibbles created by `data_processing.rmd`
+
+```{r}
+# Load in libraries 
+library(beeswarm)
+library(naniar)
+library(zoo)
+library(janitor)
+library(dplyr)
+library(plyr)
+library(tidyverse)
+library(ggplot2)
+library(GGally) # for ggpairs
+library(lubridate)
+
+# For PCA visualization
+# install.packages("factoextra")
+library(factoextra)
+# install.packages("dbscan")
+library(dbscan)
+```
+```{r}
+library(RColorBrewer)
+plot_vs_county <- function(df, col_val, percentile=FALSE,
+                           fips_title="county_fips_code", banks=6, 
+                           legend_title="", graphic_title=""){
+  # Subset for speed 
+  df <- df[c(fips_title, col_val)]
+  
+  # Get county data
+  gcounty <- ggplot2::map_data("county")
+  # USA map data
+  gusa <- map_data("state")
+
+  if (banks > 9){
+    mycolors <- colorRampPalette(brewer.pal(9, "Reds"))(banks)
+  }
+
+  # Format with subregions
+  fipstab <-
+      transmute(maps::county.fips, fips, county = sub(":.*", "", polyname)) %>%
+      unique() %>%
+      separate(county, c("region", "subregion"), sep = ",")
+
+  # Combine in desired order (NA for missing)
+  gcounty <- left_join(gcounty, fipstab, c("region", "subregion"))
+
+
+  dis <- df
+  dis$rprop <- rank(df[col_val])
+  dis$pcls <- cut(100 * percent_rank(df[col_val]), seq(0, 100, len = banks),
+                        include.lowest = TRUE)
+
+  # Missing data
+  anti_join(gcounty, dis, by = c("fips" = fips_title)) %>%
+    select(region, subregion) %>%
+    unique()
+  gcounty_pop <- left_join(gcounty, dis, by = c("fips" = fips_title))
+  fill_vals <- gcounty_pop[col_val]
+
+  # Plot
+  if (legend_title == ""){
+    legend_title <- col_val
+  }
+
+  if (percentile == FALSE){
+    # names(gcounty_pop)[names(gcounty_pop) == col_val] <- "col_of_interest"
+    plt <- ggplot(gcounty_pop) +
+      geom_polygon(aes(long, lat, group = group, fill = get(col_val)),
+                   color = "grey", size = 0.1, name="Percent Infected") +
+      geom_polygon(aes(long, lat, group = group),
+                   fill = NA, data = gusa, color = "lightgrey") +
+      coord_map("bonne", parameters = 41.6) + ggthemes::theme_map() +
+      theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)),
+          legend.background = element_rect(fill = NA),
+          legend.position = "left")
+      # scale_fill_gradient2()
+       # scale_fill_gradient(low = "white", high = "red", na.value = "grey")
+      # scale_fill_gradientn(colours = terrain.colors(10))
+  }
+
+if (percentile == TRUE){
+  plt <- ggplot(gcounty_pop) +
+    geom_polygon(aes(long, lat, group = group, fill = pcls),
+                 color = "grey", size = 0.1) +
+    geom_polygon(aes(long, lat, group = group),
+                 fill = NA, data = gusa, color = "lightgrey") +
+    coord_map("bonne", parameters = 41.6) + ggthemes::theme_map() +
+    scale_fill_manual(values = mycolors, na.value = "grey") +
+    # scale_fill_brewer(palette = "viridis", na.value = "grey") +
+    theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)),
+          legend.background = element_rect(fill = NA),
+          legend.position = "left")
+    }
+  plt <- plt + labs(fill=legend_title) + ggtitle(graphic_title)
+  plt
+}
+```
+
+
+
+```{r}
+census_normed <- read_csv("./../datasets/census_normed.csv")
+agg_state_info_normed <- read_csv("./../datasets/agg_state_info_normed.csv")
+
+# Add in actual state name to avoid issues 
+agg_state_info_normed$region = tolower(state.name[match(agg_state_info_normed$state, state.abb)])
+
+census_normed <- census_normed %>% mutate(county_fips_code = as.integer(county_fips_code))
+
+
+# Adding in county, state for graphs later
+# Remove ' county'
+# Go ahead and drop na values to avoid issues 
+census_normed$county_name <- sub("\\s*County\\b.*", "", census_normed$county_name)
+census_normed <- census_normed %>% mutate(county_state = paste(county_name, state, sep=", ")) %>% drop_na()
+
+census_normed
+agg_state_info_normed
+```
+
+```{r}
+census_normed %>% select_if(is.double)
+```
+
+
+
+## Cluster With DBSCAN
+
+First, we need to find a good value for eps.  Note: minPts contains the point itself, while the k-nearest neighbor does not. We therefore have to use k = minPts - 1.  I will create a utility function to plot to find the knee in the graph, but the dotted line will have to be adjusted after it is found.
+```{r}
+# Note: k should be minpoints - 1!
+find_optimal_eps <- function(data, k, line_pos=.32){
+  kNNdistplot(data, k = k)
+  abline(h = line_pos, col = "red", lty=2)
+}
+
+add_cluster_columns <- function(data, cluster_df){
+  data %>% mutate(cluster = cluster_df$cluster)
+}
+
+add_noise_column <- function(dbscan_df, noise_col=0){
+  clustered_data <- dbscan_df %>% mutate(cluster = if_else(cluster == noise_col, "Noise", as.character(cluster)))
+}
+
+# Add a plotting function
+```
+
+```{r}
+# Procedure:
+minPts <- 10 #10 counties must be in a cluster at a minimum
+
+# 1. Get the features we want to cluster with
+cluster_features <- census_normed %>% select(mortality_rate, pct_elderly) %>%
+  drop_na()
+
+# 2. Find eps value
+find_optimal_eps(cluster_features, k = minPts-1, line_pos = .7)
+
+# 3. Make the clustering 
+cluster_labeling <- cluster_features %>% dbscan(eps=.7, MinPts = minPts)
+print(cluster_labeling)
+
+# 4. Add clustering Labels
+cluster_data <- add_cluster_columns(cluster_features, cluster_labeling)
+
+# 5. (Depending) Add noise label
+cluster_data <- add_noise_column(cluster_data)
+
+# 6. Add back the county/state info
+cluster_data <- left_join(cluster_data, census_normed)
+
+# 5. Plot the clustering 
+ggplot(cluster_data,
+  aes(x=pct_elderly, y=mortality_rate, color=cluster))+
+  geom_point()+
+  labs(y = "Mortality Rate", x = "Percentage of Elderly Population", color="Cluster")+
+  geom_text(aes(label= ifelse(mortality_rate > quantile(mortality_rate, 0.999),
+     as.character(county_state),'')),hjust=-.1,vjust=0, size=2.5)+
+  geom_text(aes(label= ifelse(pct_elderly > quantile(pct_elderly, 0.999),
+     as.character(county_state),'')),hjust=-.1,vjust=0, size=2.5)+
+  scale_x_continuous(expand = c(.1, .1))+
+  scale_fill_discrete(name = "Cluster")
+
+# 6. Geography Plot
+plot_vs_county(cluster_data, "cluster", 
+               percentile = F,
+               banks = 11,
+               legend_title = "Cluster",
+               graphic_title = "Mortality Rate vs. Percentage Elderly Population Clustering")
+```
+Non useful ones that look the exact same:
+
+* Mortality rate with:
+  * median_income
+  
+```{r}
+census_normed
+```
+
+```{r}
+# Procedure:
+minPts <- 10 #10 counties must be in a cluster at a minimum
+
+interested_features = c("median_age", "mortality_rate")
+
+# 1. Get the features we want to cluster with
+cluster_features <- census_normed %>% select(interested_features) %>%
+  drop_na()
+
+# 2. Find eps value
+find_optimal_eps(cluster_features, k = minPts-1, line_pos = .7)
+
+# 3. Make the clustering 
+cluster_labeling <- cluster_features %>% dbscan(eps=.7, MinPts = minPts)
+print(cluster_labeling)
+
+# 4. Add clustering Labels
+cluster_data <- add_cluster_columns(cluster_features, cluster_labeling)
+
+# 5. (Depending) Add noise label
+cluster_data <- add_noise_column(cluster_data)
+# print(cluster_data)
+
+# 6. Add back the county/state info
+# cluster_data <- left_join(cluster_data, census_normed, by=state_county)
+cluster_data <- census_normed %>% mutate(cluster = cluster_data$cluster)
+print(cluster_data)
+
+# 5. Plot the clustering 
+ggplot(cluster_data,
+  aes(x=get(interested_features[1]), y=get(interested_features[2]), color=cluster))+
+  geom_point()+
+  labs(y = "Mortality Rate", x = "Median Age", color="Cluster")+
+  geom_text(aes(label= ifelse(get(interested_features[1]) > quantile(get(interested_features[1]), 0.999),
+     as.character(county_state),'')),hjust=-.1,vjust=0, size=2.5)+
+  geom_text(aes(label= ifelse(get(interested_features[2]) > quantile(get(interested_features[2]), 0.999),
+     as.character(county_state),'')),hjust=-.1,vjust=0, size=2.5)+
+  scale_x_continuous(expand = c(.1, .1))+
+  scale_fill_discrete(name = "Cluster")
+
+# 6. Geography Plot
+plot_vs_county(cluster_data, "cluster", 
+               percentile = F,
+               banks = 11,
+               legend_title = "Cluster",
+               graphic_title = "Median Age and Mortality Rate Clustering")
+```
+```{r}
+# Procedure:
+minPts <- 10 #10 counties must be in a cluster at a minimum
+
+# 1. Get the features we want to cluster with
+cluster_features <- census_normed %>% select_if(is.double) %>%
+  drop_na() %>% select(-one_of(c("pct_infected", "pct_deaths", "mortality_rate")))
+
+# 2. Find eps value
+find_optimal_eps(cluster_features, k = minPts-1, line_pos = .7)
+
+# 3. Make the clustering 
+cluster_labeling <- cluster_features %>% dbscan(eps=.7, MinPts = minPts)
+print(cluster_labeling)
+
+# 4. Add clustering Labels
+cluster_data <- add_cluster_columns(cluster_features, cluster_labeling)
+
+# 5. (Depending) Add noise label
+cluster_data <- add_noise_column(cluster_data)
+# print(cluster_data)
+
+# 6. Add back the county/state info
+# cluster_data <- left_join(cluster_data, census_normed, by=state_county)
+cluster_data <- census_normed %>% mutate(cluster = cluster_data$cluster)
+print(cluster_data)
+
+# 5. Plot the clustering 
+# ggplot(cluster_data,
+#   aes(x=get(interested_features[1]), y=get(interested_features[2]), color=cluster))+
+#   geom_point()+
+#   labs(y = "Mortality Rate", x = "Percentage of Elderly Population", color="Cluster")+
+#   geom_text(aes(label= ifelse(get(interested_features[1]) > quantile(get(interested_features[1]), 0.999),
+#      as.character(county_state),'')),hjust=-.1,vjust=0, size=2.5)+
+#   geom_text(aes(label= ifelse(get(interested_features[2]) > quantile(get(interested_features[2]), 0.999),
+#      as.character(county_state),'')),hjust=-.1,vjust=0, size=2.5)+
+#   scale_x_continuous(expand = c(.1, .1))+
+#   scale_fill_discrete(name = "Cluster")
+
+# 6. Geography Plot
+plot_vs_county(cluster_data, "cluster", 
+               percentile = F,
+               banks = 11,
+               legend_title = "Cluster",
+               graphic_title = "Not Including COVID-19 Data DBSCAN Clustering")
+```
+
+
+
+
+## Try Looking Statewise
+
+Nothng really interesting with looking at county data.  I could decrease the number of minimum points, but it seems like 10 counties for this is a good number.  Much smaller there doesn't seem like there is really a group.  The noise points were the most interesting to me.
+
+```{r}
+state.name[match("NY", state.abb)]
+```
+
+
+```{r}
+library(scales)
+plot_states <- function(data, col_val, legend_title="", graphic_title="", font_size=15){
+  sp <- select(data, region = region, col_val)
+  print(sp)
+  
+  gusa <- map_data("state")
+  print(gusa)
+  
+  gusa_pop <- left_join(gusa, sp, "region")
+  print(gusa_pop)
+  
+  plt <- ggplot(gusa_pop) +
+    geom_polygon(aes(long, lat, group = group, fill = get(col_val)), color="grey") +
+    coord_map("bonne", parameters = 41.6) +
+    ggthemes::theme_map()+
+    theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (font_size)))+
+    # scale_fill_gradient(labels = percent)+
+    scale_color_discrete()+
+    # scale_fill_binned()+
+    # scale_fill_discrete(name = "Cluster")+
+    ggtitle(graphic_title)+
+    labs(fill=legend_title)
+  
+  plt
+}
+
+```
+
+```{r}
+agg_state_info_normed
+```
+
+
+
+```{r}
+minPts <- 3 #3 states must be in a cluster at a minimum
+
+interested_features = c("pct_elderly", "mortality_rate")
+
+# 1. Get the features we want to cluster with
+cluster_features <- agg_state_info_normed %>% select(interested_features) %>%
+  drop_na()
+
+# 2. Find eps value
+find_optimal_eps(cluster_features, k = minPts-1, line_pos = .7)
+
+# 3. Make the clustering 
+cluster_labeling <- cluster_features %>% dbscan(eps=.7, MinPts = minPts)
+# print(cluster_labeling)
+
+# 4. Add clustering Labels
+cluster_data <- add_cluster_columns(cluster_features, cluster_labeling)
+
+# 5. (Depending) Add noise label
+cluster_data <- add_noise_column(cluster_data)
+# print(cluster_data)
+
+# 6. Add back the county/state info
+cluster_data <- agg_state_info_normed %>% mutate(cluster = cluster_data$cluster)
+# print(cluster_data)
+
+# 5. Plot the clustering 
+ggplot(cluster_data,
+  aes(x=get(interested_features[1]), y=get(interested_features[2]), color=cluster))+
+  geom_point()+
+  labs(y = "Normalized Mortality Rate", x = "Normalized Percentage of Elderly Population", color="Cluster")+
+  geom_text(aes(label= ifelse(get(interested_features[1]) > quantile(get(interested_features[1]), 0.999),
+     as.character(state),'')),hjust=-.3,vjust=0, size=2.5)+
+  geom_text(aes(label= ifelse(get(interested_features[2]) > quantile(get(interested_features[2]), 0.999),
+     as.character(state),'')),hjust=-.3,vjust=0, size=2.5)+
+  geom_text(aes(label= ifelse(cluster == "Noise",
+     as.character(state),'')),cex=2, hjust=1.5,vjust=-.6, size=2.5)+
+  
+  
+  scale_x_continuous(expand = c(.1, .1))+
+  scale_fill_discrete(name = "Cluster")
+
+# 6. Plot geography plot
+# print(cluster_data)
+plot_states(cluster_data %>% unique(), "cluster", legend_title = "Cluster", graphic_title = "Normalized Mortality Rate and Normalized Percentage Elderly Population DBSCAN Clustering", font_size = 11)
+```
+
+
+
+
+Doing this for all data.  Can't really visualize on scatterplot without dim reduction so avoiding that for now
+```{r}
+minPts <- 3 #3 states must be in a cluster at a minimum
+
+# 1. Get the features we want to cluster with
+cluster_features <- agg_state_info_normed %>% select_if(is.numeric) %>%
+  drop_na() %>% select(-one_of(c("pct_infected", "pct_deaths", "mortality_rate")))
+cluster_features
+
+# 2. Find eps value
+find_optimal_eps(cluster_features, k = minPts-1, line_pos = 2.5)
+
+# 3. Make the clustering 
+cluster_labeling <- cluster_features %>% dbscan(eps=2.5, MinPts = minPts)
+# print(cluster_labeling)
+
+# 4. Add clustering Labels
+cluster_data <- add_cluster_columns(cluster_features, cluster_labeling)
+
+# 5. (Depending) Add noise label
+cluster_data <- add_noise_column(cluster_data)
+# print(cluster_data)
+
+# 6. Add back the county/state info
+cluster_data <- agg_state_info_normed %>% mutate(cluster = cluster_data$cluster)
+# print(cluster_data)
+
+# 5. Plot the clustering 
+# ggplot(cluster_data,
+#   aes(x=get(interested_features[1]), y=get(interested_features[2]), color=cluster))+
+#   geom_point()+
+#   labs(y = "Mortality Rate", x = "Percentage of Elderly Population", color="Cluster")+
+#   geom_text(aes(label= ifelse(get(interested_features[1]) > quantile(get(interested_features[1]), 0.999),
+#      as.character(state),'')),hjust=-.3,vjust=0, size=2.5)+
+#   geom_text(aes(label= ifelse(get(interested_features[2]) > quantile(get(interested_features[2]), 0.999),
+#      as.character(state),'')),hjust=-.3,vjust=0, size=2.5)+
+# 
+#   geom_text(aes(label= ifelse(cluster == "Noise",
+#      as.character(state),'')),hjust=-.3,vjust=-.2, size=2.5)+
+#   
+#   
+#   scale_x_continuous(expand = c(.1, .1))+
+#   scale_fill_discrete(name = "Cluster")
+
+# 6. Plot geography plot
+# print(cluster_data)
+# Tring one without covid info to see if the states are that different
+plot_states(cluster_data %>% unique(), "cluster", legend_title = "Cluster", graphic_title = "Not Including COVID-19 Data DBSCAN Clustering")
+```
+
+```{r}
+ut <- cluster_data %>% filter(state == "UT") %>%
+  select(-one_of(c("region", "cluster"))) %>%
+  pivot_longer(!state, names_to = "Feature")
+
+ggplot(ut, aes(x = value, y = Feature))+
+  geom_bar(stat="identity")+
+  theme(plot.title = element_text(family = "Helvetica", face = "bold", size = (15)),
+          legend.background = element_rect(fill = NA),
+          legend.position = "left")+
+  ggtitle("Utah Features")
+  
+  # facet_grid(rows=vars())
+```
+
+
+# External Validation
+```{r}
+get_bins <- function(df, col_name, bins){
+  cut(100 * percent_rank(df[col_name]), seq(0, 100, len = bins),
+                        include.lowest = TRUE)
+}
+# Example usage (say you want percentile bins for mortality rate--say 5 bins)
+
+# Get the percentile cuts
+mortality_rate_pcls <- agg_state_info_normed %>% get_bins("mortality_rate", 5)
+
+# Add into the dataframe if you want 
+new_df <- agg_state_info_normed %>% mutate(mortality_rate_pcls = mortality_rate_pcls)
+new_df
+
+# If you want it just as a class label
+new_df <- new_df %>% mutate(class_label_pcls = as.integer(mortality_rate_pcls))
+new_df
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+gusa <- map_data("state")
+gusa %>% filter(region == "new york")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+add_noise_column <- function(dbscan_df, noise_col=0){
+  clustered_data <- dbscan_df %>% mutate(cluster = if_else(cluster == noise_col, "Noise", as.character(cluster)))
+}
+
+
+db_out <- dbscan(census_normed %>% select(pct_deaths, pct_elderly), eps = .15, minPts = 5)
+db_out
+```
+
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+pct_elderly_mortality_cluster <- census_normed %>% 
+  select(pct_deaths, pct_elderly) %>%
+  dbscan(eps=.15, MinPts = 5)
+pct_elderly_mortality_cluster
+```
+```{r}
+pct_elderly_mortality_cluster
+```
+
+
+```{r}
+census_normed %>% 
+  select(pct_deaths, pct_elderly) %>%
+  mutate(cluster = as.factor(pct_elderly_mortality_cluster$cluster)) %>%
+  select(cluster) %>% unique()
+```
+
+
+
+
+```{r}
+ggplot(census_normed %>% 
+  select(pct_deaths, pct_elderly) %>%
+  mutate(cluster = as.factor(pct_elderly_mortality_cluster$cluster)),
+  aes(x=pct_elderly, y=pct_deaths, color=cluster))+
+  geom_point()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## PCA Dimensionality Reduction for Clustering
+
+```{r}
+census_normed[rowSums(is.na(census_normed)) > 0, ]   
+```
+
+```{r}
+# PCA Dimensionality reduction 
+census.pca <- prcomp(census_normed %>% select_if(is.double) %>% drop_na(),)
+```
+```{r}
+census.pca$scale
+```
+
+```{r}
+p <- 
+  census.pca %>% 
+  ggplot(aes(x = rotation, weight = relative_freq)) +
+  geom_bar(width = 0.5, fill = "blue") +
+  scale_x_discrete(limits = the_order) +
+  scale_y_continuous(label = scales::percent) +
+  geom_point(aes(x = reason, y = cumulative_freq)) +
+  geom_line(aes(x = reason, y = cumulative_freq, group = 1)) +
+  # NB: Must use "group = 1"
+  labs(x = "", y = "Relative frequency", 
+       title = "A Pareto diagram for reasons of 1000 accidents") +
+  theme(plot.title = element_text(hjust = 0.5))
+  # NB: Use theme to center the title
+
+print(p)
+```
+
+
+```{r}
+fviz_eig(census.pca)
+```
+
+
+
+```{r}
+fviz_pca_var(census.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+```
+

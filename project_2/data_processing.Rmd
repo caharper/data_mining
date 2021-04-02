@@ -161,6 +161,11 @@ agg_state_info_normed <- agg_state_info %>% scale_numeric()
 census_normed
 agg_state_info_normed
 ```
+```{r}
+# Saving to csv for better loading in other branches
+write_csv(census_normed, "./../datasets/census_normed.csv")
+write_csv(agg_state_info_normed, "./../datasets/agg_state_info_normed.csv")
+```
 
 
 ```{r}
